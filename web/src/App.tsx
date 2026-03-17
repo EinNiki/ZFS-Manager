@@ -4,13 +4,11 @@ import {
   Search, 
   Bell, 
   User, 
-  Activity, 
   HardDrive, 
   ShieldCheck, 
   Database,
   Camera,
   RefreshCw,
-  Layers,
   Zap,
   Cpu,
   ArrowUpRight,
@@ -26,15 +24,13 @@ import {
   XCircle,
   Terminal,
   Server,
-  Key,
-  LayoutDashboard,
-  FileText
+  Key
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Sidebar from './components/Sidebar';
 import DatasetList from './components/DatasetList';
 import ACLManager from './components/ACLManager';
-import { ZFSPool, ZFSDataset, ZFSLog, DiskSmart, DiskStat } from './types';
+import type { ZFSPool, ZFSDataset, ZFSLog, DiskSmart, DiskStat } from './types';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { getDatasets, getPools } from './api';
 import type { ZfsDataset as ApiDataset, ZfsPool as ApiPool } from './api';
