@@ -1,822 +1,400 @@
 import { useState, useEffect } from 'react';
 import { 
-  Plus, 
   Search, 
   Bell, 
-  User, 
-  HardDrive, 
-  ShieldCheck, 
-  Database,
-  Camera,
-  RefreshCw,
-  Layers,
-  Zap,
-  Cpu,
-  ArrowUpRight,
-  ArrowDownRight,
-  Settings as SettingsIcon,
-  ChevronRight,
-  MoreHorizontal,
-  Clock,
-  CheckCircle2,
-  Thermometer,
-  Info,
-  AlertTriangle,
-  XCircle,
+  User as UserIcon, 
+  Activity, 
+  Database, 
+  HardDrive as Disk,
   Terminal,
-  Server,
-  Key
+  Zap,
+  Globe,
+  RefreshCw,
+  ShieldCheck,
+  Activity as Pulse
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Sidebar from './components/Sidebar';
 import DatasetList from './components/DatasetList';
 import ACLManager from './components/ACLManager';
-import type { ZFSPool, ZFSDataset, ZFSLog, DiskSmart, DiskStat } from './types';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { getDatasets, getPools } from './api';
-import type { ZfsDataset as ApiDataset, ZfsPool as ApiPool } from './api';
+import type { ZFSDataset } from './types';
 
-// Helper for generating mock stats for charts
-const generateMockStats = () => {
-  const stats: DiskStat[] = [];
-  const now = new Date();
-  for (let i = 0; i < 20; i++) {
-    stats.push({
-      timestamp: new Date(now.getTime() - (20 - i) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      read: Math.floor(Math.random() * 500) + 100,
-      write: Math.floor(Math.random() * 300) + 50,
-      iops: Math.floor(Math.random() * 5000) + 1000,
-      latency: (Math.random() * 5 + 1).toFixed(2),
-      arcHit: Math.floor(Math.random() * 10) + 90,
-      l2arcHit: Math.floor(Math.random() * 20) + 70,
-    });
-  }
-  return stats;
-};
-
-// Mock data for components not yet in API
-const mockLogs: ZFSLog[] = [
-  { id: '1', timestamp: '2026-03-06 14:20:12', level: 'info', message: 'Pool "tank" scrub started.', pool: 'tank' },
-  { id: '2', timestamp: '2026-03-06 14:25:45', level: 'info', message: 'Dataset "tank/data" property "compression" set to "lz4".', pool: 'tank' },
-  { id: '3', timestamp: '2026-03-06 14:30:00', level: 'warning', message: 'Disk "sde" reported high temperature (45°C).', pool: 'tank' },
-  { id: '4', timestamp: '2026-03-06 14:32:10', level: 'info', message: 'Snapshot "tank/data@hourly-1" created.', pool: 'tank' },
-  { id: '5', timestamp: '2026-03-06 14:35:00', level: 'error', message: 'Replication task "tank/data → remote" failed: Connection timed out.', pool: 'tank' },
+// --- Nexus Gen 2 Mock Data ---
+const performanceData = [
+  { time: '00:00', throughput: 450, iops: 1200, latency: 0.5 },
+  { time: '04:00', throughput: 890, iops: 2400, latency: 0.8 },
+  { time: '08:00', throughput: 1200, iops: 3800, latency: 1.2 },
+  { time: '12:00', throughput: 950, iops: 2900, latency: 0.9 },
+  { time: '16:00', throughput: 1350, iops: 4200, latency: 1.5 },
+  { time: '20:00', throughput: 800, iops: 2100, latency: 0.7 },
+  { time: '23:59', throughput: 550, iops: 1500, latency: 0.6 },
 ];
 
-const mockSmartData: DiskSmart[] = [
-  { device: 'sda', model: 'Samsung SSD 870', serial: 'S5YJN123456', temperature: 32, powerOnHours: 12450, status: 'PASSED', reallocatedSectors: 0 },
-  { device: 'sdb', model: 'Samsung SSD 870', serial: 'S5YJN123457', temperature: 33, powerOnHours: 12452, status: 'PASSED', reallocatedSectors: 0 },
-  { device: 'sdc', model: 'WD Red Pro', serial: 'WD-WCC123456', temperature: 38, powerOnHours: 25600, status: 'PASSED', reallocatedSectors: 0 },
-  { device: 'sdd', model: 'WD Red Pro', serial: 'WD-WCC123457', temperature: 39, powerOnHours: 25605, status: 'PASSED', reallocatedSectors: 0 },
+const mockDatasets: ZFSDataset[] = [
+  { id: '1', name: 'tank/production', used: '1.2TB', avail: '8.8TB', refer: '1.2TB', mountpoint: '/mnt/prod', compression: 'lz4', dedup: 'off', readonly: false },
+  { id: '2', name: 'tank/backups', used: '4.5TB', avail: '5.5TB', refer: '4.5TB', mountpoint: '/mnt/backup', compression: 'zstd', dedup: 'on', readonly: true },
+];
+
+const mockPools = [
+  { name: 'tank-main', size: '20TB', alloc: '4.2TB', free: '15.8TB', cap: 21, health: 'ONLINE' },
+  { name: 'data-nexus', size: '100TB', alloc: '65TB', free: '35TB', cap: 65, health: 'ONLINE' },
 ];
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [datasets, setDatasets] = useState<ZFSDataset[]>([]);
-  const [pools, setPools] = useState<ZFSPool[]>([]);
-  const [stats, setStats] = useState<DiskStat[]>(generateMockStats());
-  const [loading, setLoading] = useState(true);
-
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const [d, p] = await Promise.all([getDatasets(), getPools()]);
-      
-      const mappedDatasets: ZFSDataset[] = d.map((ds: ApiDataset, index: number) => ({
-        id: index.toString(),
-        name: ds.name,
-        used: ds.used,
-        avail: ds.available,
-        refer: ds.refer,
-        mountpoint: ds.mountpoint,
-        compression: 'lz4',
-        dedup: 'off',
-        readonly: false
-      }));
-
-      const mappedPools: ZFSPool[] = p.map((pool: ApiPool) => ({
-        name: pool.name,
-        size: pool.size,
-        alloc: pool.alloc,
-        free: pool.free,
-        cap: Math.round((parseInt(pool.alloc) / parseInt(pool.size)) * 100) || 0,
-        health: pool.health as any,
-        raidType: 'Generic',
-        vdevs: []
-      }));
-
-      setDatasets(mappedDatasets);
-      setPools(mappedPools);
-    } catch (error) {
-      console.error('Failed to fetch data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
-    fetchData();
-    const interval = setInterval(() => {
-      setStats(prev => {
-        const newStat: DiskStat = {
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          read: Math.floor(Math.random() * 500) + 100,
-          write: Math.floor(Math.random() * 300) + 50,
-          iops: Math.floor(Math.random() * 5000) + 1000,
-          latency: (Math.random() * 5 + 1).toFixed(2),
-          arcHit: Math.floor(Math.random() * 10) + 90,
-          l2arcHit: Math.floor(Math.random() * 20) + 70,
-        };
-        return [...prev.slice(1), newStat];
-      });
-    }, 3000);
-    return () => clearInterval(interval);
+    // Initialization logic if needed
   }, []);
 
-  const renderContent = () => {
-    const currentStats = stats[stats.length - 1] || { read: 0, write: 0, iops: 0 };
-
-    switch (activeTab) {
-      case 'dashboard':
-        return (
-          <div className="space-y-12">
-            {/* High-Impact Stat Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-8">
-              {[
-                { label: 'Total Capacity', value: pools.length > 0 ? pools.reduce((acc, p) => acc + (parseFloat(p.size) || 0), 0).toFixed(1) + ' TB' : '0 TB', icon: Database, color: 'text-blue-400', trend: '+2.4%', up: true },
-                { label: 'CPU Usage', value: '12.4%', icon: Cpu, color: 'text-emerald-400', trend: '-1.2%', up: false },
-                { label: 'System Health', value: pools.every(p => p.health === 'ONLINE') ? 'Optimal' : 'Check', icon: ShieldCheck, color: 'text-indigo-400', trend: 'Stable', up: true },
-                { label: 'IOPS', value: `${(currentStats.iops / 1000).toFixed(1)}k`, icon: Zap, color: 'text-amber-400', trend: '+12%', up: true },
-                { label: 'Read Speed', value: `${currentStats.read} MB/s`, icon: ArrowDownRight, color: 'text-blue-500', trend: 'Live', up: true },
-                { label: 'Write Speed', value: `${currentStats.write} MB/s`, icon: ArrowUpRight, color: 'text-emerald-500', trend: 'Live', up: true },
-              ].map((stat, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.05 + 0.2 }}
-                  className="glass-panel p-8 flex flex-col gap-6 group hover:translate-y-[-4px]"
-                >
-                  <div className="flex justify-between items-start">
-                    <div className={`p-4 rounded-2xl bg-white/[0.03] ${stat.color} group-hover:scale-110 transition-transform duration-500`}>
-                      <stat.icon size={28} />
-                    </div>
-                    <div className={`flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest ${stat.up ? 'text-emerald-400' : 'text-rose-400'}`}>
-                      {stat.up ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
-                      {stat.trend}
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-white/30 text-[10px] font-black uppercase tracking-[0.2em] mb-2">{stat.label}</p>
-                    <p className="text-3xl font-bold text-white tracking-tight">{stat.value}</p>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
-              <div className="lg:col-span-2 space-y-10">
-                <motion.div 
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.5 }}
-                  className="glass-panel p-10"
-                >
-                  <div className="flex justify-between items-center mb-10">
-                    <div>
-                      <h3 className="text-2xl font-bold text-white tracking-tight">System Node Overview</h3>
-                      <p className="text-sm font-medium text-white/40 mt-1">Status and performance metrics for Node-01</p>
-                    </div>
-                    <span className="status-badge status-online">
-                      <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                      Operational
-                    </span>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div className="bg-white/[0.02] p-8 rounded-[2rem] border border-white/[0.05] hover:bg-white/[0.04] transition-colors">
-                      <h4 className="text-[10px] font-black text-white/30 uppercase tracking-[0.2em] mb-6">Uptime</h4>
-                      <p className="text-3xl font-bold text-white tracking-tight">12d 4h 32m</p>
-                      <div className="flex items-center gap-2 mt-3 text-white/20 text-[11px] font-medium">
-                        <Clock size={12} />
-                        <span>Last boot: 2026-02-22</span>
-                      </div>
-                    </div>
-                    
-                    <div className="bg-white/[0.02] p-8 rounded-[2rem] border border-white/[0.05] hover:bg-white/[0.04] transition-colors">
-                      <h4 className="text-[10px] font-black text-white/30 uppercase tracking-[0.2em] mb-6">Load Average</h4>
-                      <div className="flex gap-8">
-                        <div>
-                          <p className="text-xl font-bold text-white">0.42</p>
-                          <p className="text-[10px] font-black text-white/20 uppercase tracking-widest mt-1">1m</p>
-                        </div>
-                        <div className="w-px h-10 bg-white/10" />
-                        <div>
-                          <p className="text-xl font-bold text-white">0.38</p>
-                          <p className="text-[10px] font-black text-white/20 uppercase tracking-widest mt-1">5m</p>
-                        </div>
-                        <div className="w-px h-10 bg-white/10" />
-                        <div>
-                          <p className="text-xl font-bold text-white">0.31</p>
-                          <p className="text-[10px] font-black text-white/20 uppercase tracking-widest mt-1">15m</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </motion.div>
-              </div>
-
-              <div className="space-y-10">
-                <div className="flex justify-between items-center px-2">
-                  <h3 className="text-xl font-bold text-white tracking-tight">Active Pools</h3>
-                  <motion.button 
-                    whileHover={{ scale: 1.1, rotate: 90 }}
-                    whileTap={{ scale: 0.9 }}
-                    className="p-2.5 bg-white/[0.03] border border-white/10 rounded-xl text-white/40 hover:text-white transition-all"
-                  >
-                    <Plus size={22} />
-                  </motion.button>
-                </div>
-                
-                <div className="space-y-6">
-                  {pools.map((pool, i) => (
-                    <motion.div
-                      key={pool.name}
-                      initial={{ opacity: 0, x: 20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: i * 0.1 + 0.6 }}
-                      className="glass-panel p-8 group cursor-pointer hover:bg-white/[0.05]"
-                    >
-                      <div className="flex justify-between items-start mb-8">
-                        <div className="flex items-center gap-5">
-                          <div className="w-14 h-14 bg-gradient-to-br from-zfs-accent/20 to-zfs-accent/5 rounded-2xl flex items-center justify-center text-zfs-accent group-hover:scale-110 transition-transform duration-500">
-                            <Database size={28} />
-                          </div>
-                          <div>
-                            <p className="text-lg font-bold text-white tracking-tight">{pool.name}</p>
-                            <span className={`status-badge mt-2 ${pool.health === 'ONLINE' ? 'status-online' : 'status-error'}`}>
-                              {pool.health}
-                            </span>
-                          </div>
-                        </div>
-                        <button className="text-white/20 hover:text-white p-2">
-                          <MoreHorizontal size={20} />
-                        </button>
-                      </div>
-                      
-                      <div className="space-y-5">
-                        <div className="flex justify-between text-[11px] font-black uppercase tracking-widest text-white/40">
-                          <span>Usage Intensity</span>
-                          <span className="text-white">{pool.cap}%</span>
-                        </div>
-                        <div className="w-full h-2 bg-white/[0.03] border border-white/5 rounded-full overflow-hidden">
-                          <motion.div 
-                            initial={{ width: 0 }}
-                            animate={{ width: `${pool.cap}%` }}
-                            transition={{ duration: 1.5, ease: "easeOut" }}
-                            className="h-full bg-gradient-to-r from-zfs-accent via-indigo-500 to-purple-600 rounded-full relative"
-                          >
-                            <div className="absolute inset-0 bg-white/20 animate-pulse" />
-                          </motion.div>
-                        </div>
-                        <div className="flex justify-between text-[10px] font-bold text-white/20 uppercase tracking-[0.2em]">
-                          <span>{pool.alloc} Allocated</span>
-                          <span>{pool.free} Available</span>
-                        </div>
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-      case 'stats':
-        return (
-          <div className="space-y-12">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="glass-panel p-10"
-              >
-                <div className="flex justify-between items-center mb-12">
-                  <div>
-                    <h3 className="text-2xl font-bold text-white tracking-tight">Throughput Velocity</h3>
-                    <p className="text-sm font-medium text-white/40 mt-1">Real-time packet transmission metrics</p>
-                  </div>
-                  <div className="flex items-center gap-6">
-                    <div className="flex items-center gap-2.5">
-                        <div className="w-2.5 h-2.5 rounded-full bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)]" />
-                        <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">Read</span>
-                    </div>
-                    <div className="flex items-center gap-2.5">
-                        <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
-                        <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">Write</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="h-[300px] w-full mt-4">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={stats}>
-                      <defs>
-                        <linearGradient id="colorRead" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.4}/>
-                          <stop offset="95%" stopColor="#3B82F6" stopOpacity={0}/>
-                        </linearGradient>
-                        <linearGradient id="colorWrite" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#10B981" stopOpacity={0.4}/>
-                          <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="4 4" stroke="rgba(255,255,255,0.03)" vertical={false} />
-                      <XAxis dataKey="timestamp" axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.2)', fontSize: 10, fontWeight: 700 }} minTickGap={40} dy={15} />
-                      <YAxis axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.2)', fontSize: 10, fontWeight: 700 }} dx={-10} />
-                      <Tooltip 
-                        contentStyle={{ 
-                          backgroundColor: 'rgba(2, 6, 23, 0.8)', 
-                          backdropFilter: 'blur(12px)',
-                          border: '1px solid rgba(255,255,255,0.1)', 
-                          borderRadius: '1.5rem',
-                          padding: '1.25rem',
-                          boxShadow: '0 20px 40px rgba(0,0,0,0.4)'
-                        }} 
-                      />
-                      <Area type="monotone" dataKey="read" stroke="#3B82F6" fillOpacity={1} fill="url(#colorRead)" strokeWidth={3} />
-                      <Area type="monotone" dataKey="write" stroke="#10B981" fillOpacity={1} fill="url(#colorWrite)" strokeWidth={3} />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              </motion.div>
-
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.2 }}
-                className="glass-panel p-10"
-              >
-                <div className="flex justify-between items-center mb-12">
-                  <div>
-                    <h3 className="text-2xl font-bold text-white tracking-tight">I/O Consistency</h3>
-                    <p className="text-sm font-medium text-white/40 mt-1">Storage operation volume and frequency</p>
-                  </div>
-                  <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.15)]">
-                    <Zap size={24} />
-                  </div>
-                </div>
-                <div className="h-[300px] w-full mt-4">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={stats}>
-                      <defs>
-                        <linearGradient id="colorIops" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#F59E0B" stopOpacity={0.4}/>
-                          <stop offset="95%" stopColor="#F59E0B" stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="4 4" stroke="rgba(255,255,255,0.03)" vertical={false} />
-                      <XAxis dataKey="timestamp" axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.2)', fontSize: 10, fontWeight: 700 }} minTickGap={40} dy={15} />
-                      <YAxis axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.2)', fontSize: 10, fontWeight: 700 }} dx={-10} />
-                      <Tooltip 
-                        contentStyle={{ 
-                          backgroundColor: 'rgba(2, 6, 23, 0.8)', 
-                          backdropFilter: 'blur(12px)',
-                          border: '1px solid rgba(255,255,255,0.1)', 
-                          borderRadius: '1.5rem',
-                          padding: '1.25rem',
-                          boxShadow: '0 20px 40px rgba(0,0,0,0.4)'
-                        }} 
-                      />
-                      <Area type="monotone" dataKey="iops" stroke="#F59E0B" fillOpacity={1} fill="url(#colorIops)" strokeWidth={3} />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              </motion.div>
-            </div>
-          </div>
-        );
-      case 'pools':
-        return (
-          <div className="space-y-12">
-            <div className="flex justify-between items-end">
-              <div>
-                <h2 className="text-4xl font-extrabold text-white tracking-tighter">Storage Pools</h2>
-                <p className="text-white/40 font-medium mt-2">Architect and monitor your ZFS storage hierarchy</p>
-              </div>
-              <motion.button 
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={fetchData} 
-                className="apple-button apple-button-primary px-8"
-              >
-                <RefreshCw size={20} className={loading ? 'animate-spin' : ''} /> 
-                <span className="ml-1">Refresh Infrastructure</span>
-              </motion.button>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-              {pools.map((pool, i) => (
-                <motion.div 
-                  key={pool.name}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.1 }}
-                  className="glass-panel p-10 group"
-                >
-                  <div className="flex justify-between items-center mb-10">
-                    <div className="flex items-center gap-6">
-                      <div className="w-16 h-16 bg-zfs-accent/10 rounded-[1.5rem] flex items-center justify-center text-zfs-accent border border-zfs-accent/20 group-hover:scale-110 transition-transform duration-500">
-                        <Database size={32} />
-                      </div>
-                      <div>
-                        <h2 className="text-2xl font-bold text-white tracking-tight">{pool.name}</h2>
-                        <p className="text-sm font-bold text-white/30 tracking-widest uppercase mt-1">{pool.raidType} • {pool.size}</p>
-                      </div>
-                    </div>
-                    <span className={`status-badge ${pool.health === 'ONLINE' ? 'status-online' : 'status-error'}`}>
-                      <div className={`w-2 h-2 rounded-full ${pool.health === 'ONLINE' ? 'bg-emerald-400' : 'bg-rose-400'} animate-pulse`} />
-                      {pool.health}
-                    </span>
-                  </div>
-                  
-                  <div className="grid grid-cols-3 gap-6 mt-8">
-                    {[
-                      { label: 'Allocated', value: pool.alloc },
-                      { label: 'Free Space', value: pool.free },
-                      { label: 'Utilization', value: `${pool.cap}%` },
-                    ].map((stat, idx) => (
-                      <div key={idx} className="bg-white/[0.02] border border-white/5 p-5 rounded-2xl hover:bg-white/[0.04] transition-colors">
-                        <p className="text-[10px] font-black text-white/20 uppercase tracking-[0.2em] mb-2">{stat.label}</p>
-                        <p className="text-xl font-bold text-white tracking-tight">{stat.value}</p>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="mt-10 p-4 bg-white/[0.02] border border-white/5 rounded-2xl flex items-center justify-between group/row hover:bg-white/[0.04] cursor-pointer transition-colors">
-                    <div className="flex items-center gap-4">
-                        <div className="p-2 bg-white/5 rounded-lg text-white/40 group-hover/row:text-zfs-accent transition-colors">
-                            <Layers size={18} />
-                        </div>
-                        <span className="text-sm font-bold text-white/60">View Virtual Devices (vdevs)</span>
-                    </div>
-                    <ChevronRight size={18} className="text-white/20 group-hover/row:translate-x-1 transition-transform" />
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          </div>
-        );
-      case 'datasets':
-        return <DatasetList datasets={datasets} />;
-      case 'permissions':
-        return <ACLManager />;
-      case 'snapshots':
-        return (
-          <div className="space-y-12">
-            <div className="flex justify-between items-end">
-              <div>
-                <h2 className="text-4xl font-extrabold text-white tracking-tighter">Snapshots</h2>
-                <p className="text-white/40 font-medium mt-2">Point-in-time recovery and automated scheduling</p>
-              </div>
-              <button className="apple-button apple-button-primary px-8">
-                <Camera size={20} /> <span className="ml-1">Capture Instant State</span>
-              </button>
-            </div>
-            <motion.div 
-               initial={{ opacity: 0, scale: 0.98 }}
-               animate={{ opacity: 1, scale: 1 }}
-               className="glass-panel p-24 text-center border-dashed border-2 border-white/10 bg-transparent"
-            >
-              <div className="w-24 h-24 bg-white/[0.03] rounded-full flex items-center justify-center mx-auto mb-8 border border-white/5">
-                <Camera size={40} className="text-zfs-accent opacity-40" />
-              </div>
-              <h2 className="text-2xl font-bold mb-3 tracking-tight">No snapshots found</h2>
-              <p className="text-white/40 max-w-sm mx-auto text-sm leading-relaxed font-medium">Protect your data by creating periodic snapshots. They occupy zero space until data changes.</p>
-              <button className="mt-10 apple-button apple-button-secondary mx-auto">Learn more about ZFS Snapshots</button>
-            </motion.div>
-          </div>
-        );
-      case 'replication':
-        return (
-          <div className="space-y-12">
-            <div className="flex justify-between items-end">
-              <div>
-                <h2 className="text-4xl font-extrabold text-white tracking-tighter">Replication</h2>
-                <p className="text-white/40 font-medium mt-2">Secure remote dataset synchronization and offsite backups</p>
-              </div>
-              <button className="apple-button apple-button-primary px-8">
-                <RefreshCw size={20} /> <span className="ml-1">Configure Remote Target</span>
-              </button>
-            </div>
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.98 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="glass-panel p-24 text-center border-dashed border-2 border-white/10 bg-transparent"
-            >
-              <div className="w-24 h-24 bg-white/[0.03] rounded-full flex items-center justify-center mx-auto mb-8 border border-white/5">
-                <RefreshCw size={40} className="text-zfs-accent opacity-40" />
-              </div>
-              <h2 className="text-2xl font-bold mb-3 tracking-tight">Active Replication Tasks</h2>
-              <p className="text-white/40 max-w-sm mx-auto text-sm leading-relaxed font-medium">No active replication tasks configured. Connect a remote ZFS host to begin offsite backups.</p>
-            </motion.div>
-          </div>
-        );
-      case 'scrub':
-        return (
-          <div className="space-y-12">
-             <div className="flex justify-between items-end">
-              <div>
-                <h2 className="text-4xl font-extrabold text-white tracking-tighter">Scrub & Health</h2>
-                <p className="text-white/40 font-medium mt-2">Data integrity verification and drive health diagnostics</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-12 text-left">
-              <motion.div 
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                className="glass-panel p-10"
-              >
-                <div className="flex items-center gap-4 mb-10">
-                    <div className="p-3 bg-zfs-accent/10 rounded-2xl text-zfs-accent border border-zfs-accent/20">
-                        <ShieldCheck size={24} />
-                    </div>
-                    <h4 className="text-xl font-bold tracking-tight">Integrity Verification</h4>
-                </div>
-                
-                <div className="space-y-6">
-                  {[
-                    { label: 'Last Scrub Completed', value: '2026-03-04 12:00', icon: Clock },
-                    { label: 'Checksum Errors Found', value: '0', icon: CheckCircle2, color: 'text-emerald-400' },
-                    { label: 'Pool Consistency', value: 'Healthy', status: 'online' },
-                  ].map((row, i) => (
-                    <div key={i} className="flex justify-between items-center p-5 bg-white/[0.02] border border-white/5 rounded-2xl hover:bg-white/[0.04] transition-colors">
-                      <div className="flex items-center gap-4">
-                        <div className="text-white/20">{row.icon && <row.icon size={16} />}</div>
-                        <span className="text-sm font-bold text-white/40 tracking-wide uppercase text-[10px]">{row.label}</span>
-                      </div>
-                      {row.status ? (
-                         <span className="status-badge status-online text-[9px]">Verified</span>
-                      ) : (
-                        <span className={`text-sm font-bold ${row.color || 'text-white'}`}>{row.value}</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-                <button className="mt-10 w-full apple-button apple-button-primary py-4 font-black tracking-widest uppercase text-xs">Execute Data Scrub</button>
-              </motion.div>
-
-              <motion.div 
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                className="glass-panel p-10"
-              >
-                <div className="flex items-center gap-4 mb-10">
-                    <div className="p-3 bg-amber-500/10 rounded-2xl text-amber-400 border border-amber-500/20">
-                        <HardDrive size={24} />
-                    </div>
-                    <h4 className="text-xl font-bold tracking-tight">S.M.A.R.T. Diagnostics</h4>
-                </div>
-
-                <div className="grid grid-cols-1 gap-6">
-                  {mockSmartData.slice(0, 2).map((smart) => (
-                    <div key={smart.device} className="bg-white/[0.02] p-6 rounded-[2rem] border border-white/[0.05] group hover:bg-white/[0.04] transition-all">
-                      <div className="flex justify-between items-start mb-6">
-                        <div className="flex items-center gap-4">
-                            <div className="p-3 bg-white/5 rounded-xl text-zfs-accent group-hover:scale-110 transition-transform">
-                              <HardDrive size={20} />
-                            </div>
-                            <div>
-                                <p className="font-bold text-white tracking-tight">{smart.device}</p>
-                                <p className="text-[10px] font-black text-white/20 uppercase tracking-widest mt-1">{smart.model}</p>
-                            </div>
-                        </div>
-                        <span className={`status-badge ${smart.status === 'PASSED' ? 'status-online' : 'status-error'}`}>
-                          {smart.status}
-                        </span>
-                      </div>
-                      
-                      <div className="grid grid-cols-3 gap-4">
-                        {[
-                          { icon: Thermometer, value: `${smart.temperature}°C`, label: 'Temp' },
-                          { icon: Clock, value: `${(smart.powerOnHours / 24).toFixed(0)}d`, label: 'Uptime' },
-                          { icon: AlertTriangle, value: smart.reallocatedSectors, label: 'Sectors', color: smart.reallocatedSectors === 0 ? 'text-emerald-400' : 'text-rose-400' },
-                        ].map((stat, idx) => (
-                          <div key={idx} className="bg-white/5 p-3 rounded-xl text-center">
-                            <div className="flex justify-center mb-1 text-white/20"><stat.icon size={12} /></div>
-                            <p className={`text-sm font-bold tracking-tight ${stat.color || 'text-white'}`}>{stat.value}</p>
-                            <p className="text-[8px] font-black text-white/20 uppercase tracking-widest mt-1">{stat.label}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </motion.div>
-            </div>
-          </div>
-        );
-      case 'logs':
-        return (
-          <div className="space-y-12">
-            <div className="glass-panel p-10">
-              <div className="flex justify-between items-center mb-12">
-                <div>
-                  <h3 className="text-2xl font-bold text-white tracking-tight">System Event Registry</h3>
-                  <p className="text-sm font-medium text-white/40 mt-1">Audit trail of kernel and middleware operations</p>
-                </div>
-                <div className="flex gap-4">
-                    <button className="apple-button apple-button-secondary px-6 text-xs uppercase tracking-widest font-black">Export Audit</button>
-                    <button className="apple-button apple-button-primary px-6 text-xs uppercase tracking-widest font-black">Clear Buffer</button>
-                </div>
-              </div>
-              <div className="space-y-4">
-                {mockLogs.map((log, i) => (
-                  <motion.div 
-                    key={log.id}
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: i * 0.05 }}
-                    className="flex items-center gap-8 p-6 bg-white/[0.01] rounded-3xl border border-white/[0.03] hover:bg-white/[0.03] hover:border-white/10 transition-all group"
-                  >
-                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110 ${
-                      log.level === 'error' ? 'bg-rose-500/10 text-rose-400' :
-                      log.level === 'warning' ? 'bg-amber-500/10 text-amber-400' :
-                      'bg-zfs-accent/10 text-zfs-accent'
-                    }`}>
-                      {log.level === 'error' ? <XCircle size={22} /> :
-                       log.level === 'warning' ? <AlertTriangle size={22} /> :
-                       <Info size={22} />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-4 mb-2">
-                        <span className="text-[10px] font-black text-white/20 uppercase tracking-[0.2em]">{log.timestamp}</span>
-                        {log.pool && (
-                            <span className="text-[9px] font-black uppercase px-2.5 py-1 bg-zfs-accent/5 text-zfs-accent rounded-lg border border-zfs-accent/10 tracking-[0.15em]">
-                                {log.pool}
-                            </span>
-                        )}
-                      </div>
-                      <p className="text-sm font-medium text-white/70 tracking-tight leading-relaxed">{log.message}</p>
-                    </div>
-                    <ChevronRight size={18} className="text-white/10 group-hover:text-white/30 transition-colors" />
-                  </motion.div>
-                ))}
-              </div>
-            </div>
-          </div>
-        );
-      case 'settings':
-        return (
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-12">
-            <motion.div 
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="glass-panel p-10"
-            >
-              <div className="flex items-center gap-5 mb-12">
-                <div className="p-4 bg-zfs-accent/10 rounded-2xl text-zfs-accent border border-zfs-accent/20">
-                    <SettingsIcon size={28} />
-                </div>
-                <div>
-                    <h3 className="text-2xl font-bold text-white tracking-tight">System Core</h3>
-                    <p className="text-sm font-medium text-white/40">Hardware and network configuration</p>
-                </div>
-              </div>
-              
-              <div className="space-y-6">
-                {[
-                  { label: 'System Hostname', value: 'nexus-zfs-node-01', icon: Server, type: 'input' },
-                  { label: 'Secure Shell (SSH)', value: 'Enabled (Port 22)', icon: Terminal, type: 'toggle' },
-                  { label: 'Administrative Key', value: '••••••••••••', icon: Key, type: 'input' },
-                ].map((item, i) => (
-                  <div key={i} className="group">
-                    <div className="flex justify-between items-center p-6 bg-white/[0.01] border border-white/[0.03] rounded-3xl group-hover:bg-white/[0.03] group-hover:border-white/10 transition-all">
-                        <div className="flex items-center gap-5">
-                            <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center text-white/20 group-hover:text-zfs-accent transition-colors">
-                                <item.icon size={20} />
-                            </div>
-                            <div>
-                                <p className="text-[10px] font-black text-white/20 uppercase tracking-[0.2em] mb-1">{item.label}</p>
-                                <p className="text-sm font-bold text-white/80">{item.value}</p>
-                            </div>
-                        </div>
-                        <button className="p-2 text-white/10 hover:text-white transition-colors">
-                            <SettingsIcon size={16} />
-                        </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <button className="mt-12 w-full apple-button apple-button-primary py-4 font-black tracking-widest uppercase text-xs">Commit System Changes</button>
-            </motion.div>
-
-            <motion.div 
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 }}
-                className="glass-panel p-10"
-            >
-              <div className="flex items-center gap-5 mb-12">
-                <div className="p-4 bg-emerald-500/10 rounded-2xl text-emerald-400 border border-emerald-500/20">
-                    <ShieldCheck size={28} />
-                </div>
-                <div>
-                    <h3 className="text-2xl font-bold text-white tracking-tight">Access & Security</h3>
-                    <p className="text-sm font-medium text-white/40">Authentication and session management</p>
-                </div>
-              </div>
-              
-              <div className="space-y-5">
-                {[
-                    { title: 'Multi-Factor Auth', desc: 'Hardware-based security keys (YubiKey)', active: true },
-                    { title: 'API Management', desc: 'Secure tokens for third-party orchestration', active: false },
-                    { title: 'Session Timeout', desc: 'Automatic logout after 30 minutes of inactivity', active: true },
-                ].map((sec, i) => (
-                    <div key={i} className="p-6 bg-white/[0.01] border border-white/[0.03] rounded-3xl flex justify-between items-center hover:bg-white/[0.03] transition-colors cursor-pointer group">
-                        <div>
-                            <p className="text-sm font-bold tracking-tight text-white/80">{sec.title}</p>
-                            <p className="text-xs font-medium text-white/30 mt-1">{sec.desc}</p>
-                        </div>
-                        <div className={`w-12 h-6 rounded-full relative transition-colors duration-500 ${sec.active ? 'bg-emerald-500/20 border border-emerald-500/30' : 'bg-white/5 border border-white/10'}`}>
-                            <div className={`absolute top-1 w-4 h-4 rounded-full transition-all duration-500 ${sec.active ? 'right-1 bg-emerald-400' : 'left-1 bg-white/10'}`} />
-                        </div>
-                    </div>
-                ))}
-              </div>
-            </motion.div>
-          </div>
-        );
-      default:
-        return null;
-    }
-  };
-
   return (
-    <div className="flex min-h-screen bg-zfs-deep relative font-sans overflow-hidden">
-      {/* Background Decor */}
-      <div className="bg-mesh-glow" />
-      <div className="glow-blob top-[-100px] left-[-100px] animate-float" />
-      <div className="glow-blob bottom-[-100px] right-[-100px] animate-float" style={{ animationDelay: '-10s' }} />
-      
+    <div className="relative min-h-screen bg-zfs-bg text-white overflow-hidden selection:bg-blue-500/30">
+      {/* Nexus Liquid Background */}
+      <div className="nexus-bg">
+        <div className="liquid-blob blob-1" />
+        <div className="liquid-blob blob-2" />
+        <div className="liquid-blob blob-3" />
+      </div>
+
       <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
-      
-      <main className="flex-1 ml-72 p-12 overflow-y-auto h-screen no-scrollbar relative z-10">
-        {/* Header */}
-        <motion.header 
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex justify-between items-center mb-16"
-        >
-          <div className="flex items-center gap-6 bg-white/[0.03] border border-white/[0.08] rounded-[2rem] px-8 py-4 w-[28rem] focus-within:bg-white/[0.06] focus-within:border-zfs-accent/50 focus-within:shadow-[0_0_30px_rgba(59,130,246,0.15)] transition-all duration-500 backdrop-blur-md">
-            <Search size={20} className="text-white/30" />
-            <input 
-              type="text" 
-              placeholder="Search storage resources..." 
-              className="bg-transparent border-none outline-none text-sm text-white placeholder:text-white/20 w-full font-medium"
-            />
-          </div>
-          
-          <div className="flex items-center gap-8">
-            <motion.button 
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              className="w-14 h-14 flex items-center justify-center rounded-[1.25rem] bg-white/[0.03] text-white/40 hover:text-white border border-white/[0.08] hover:bg-white/[0.06] transition-all relative backdrop-blur-md"
-            >
-              <Bell size={22} />
-              <span className="absolute top-4 right-4 w-2.5 h-2.5 bg-rose-500 rounded-full border-[3px] border-[#0c1327]" />
-            </motion.button>
-            
-            <div className="flex items-center gap-5 pl-8 border-l border-white/10">
-              <div className="text-right hidden sm:block">
-                <p className="text-sm font-bold text-white tracking-wide">Admin System</p>
-                <p className="text-[10px] font-black text-zfs-accent uppercase tracking-[0.2em] mt-0.5">Primary Node</p>
+
+      <main className="pl-[24rem] pr-12 py-12 min-h-screen overflow-y-auto no-scrollbar relative z-10">
+        {/* Modern Command Header */}
+        <header className="flex justify-between items-center mb-16">
+          <motion.div 
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="flex items-center gap-6"
+          >
+            <div className="relative group">
+                <div className="absolute -inset-2 bg-blue-500/20 blur-xl opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="nexus-card !p-3.5 !rounded-2xl border-white/5 bg-white/[0.02] relative">
+                    <Terminal size={20} className="text-blue-400" />
+                </div>
+            </div>
+            <div>
+              <h2 className="text-4xl font-black tracking-tighter uppercase italic leading-none">
+                {activeTab === 'dashboard' ? 'Nexus Terminal' : activeTab}
+              </h2>
+              <div className="flex items-center gap-2 mt-2 opacity-40">
+                <Globe size={10} />
+                <span className="text-[10px] font-black tracking-[0.3em] uppercase">Node: storage-delta-01</span>
               </div>
-              <motion.div 
-                whileHover={{ scale: 1.05 }}
-                className="w-14 h-14 rounded-[1.25rem] bg-gradient-to-br from-zfs-accent to-indigo-600 flex items-center justify-center shadow-xl cursor-not-allowed"
-              >
-                <User size={22} className="text-white" />
-              </motion.div>
+            </div>
+          </motion.div>
+
+          <div className="flex items-center gap-10">
+            <div className="relative group">
+              <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-white/20 group-focus-within:text-blue-400 transition-colors" size={18} />
+              <input 
+                type="text"
+                placeholder="EXECUTE SCAN..."
+                className="bg-white/[0.02] border border-white/5 rounded-3xl px-14 py-4.5 w-96 text-xs font-black tech-font tracking-widest focus:outline-none focus:border-blue-500/30 transition-all placeholder:text-white/10"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+            
+            <div className="flex items-center gap-5">
+                <button className="nexus-card !p-4.5 !rounded-2xl border-white/5 bg-white/[0.02] text-white/40 hover:text-white hover:border-white/20 transition-all">
+                    <Bell size={20} />
+                </button>
+                <div className="w-px h-8 bg-white/5 mx-2" />
+                <button className="nexus-card !p-4.5 !rounded-2xl border-white/5 bg-white/[0.02] text-white/40 hover:text-white hover:border-white/20 transition-all">
+                    <UserIcon size={20} />
+                </button>
             </div>
           </div>
-        </motion.header>
+        </header>
 
         <AnimatePresence mode="wait">
-          <motion.div
-            key={activeTab}
-            initial={{ opacity: 0, scale: 0.98, y: 15 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 1.02, y: -15 }}
-            transition={{ 
-              type: "spring",
-              stiffness: 260,
-              damping: 20
-            }}
-          >
-            {renderContent()}
-          </motion.div>
+          {activeTab === 'dashboard' && (
+            <motion.div 
+              key="dashboard"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="space-y-12"
+            >
+              {/* Ultra-Modern Stat Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10">
+                {[
+                    { label: 'System Health', value: '98.4%', trend: 'OPTIMAL', icon: ShieldCheck, color: 'text-emerald-400', glow: 'neon-glow-emerald' },
+                    { label: 'Total Capacity', value: '142.8 TB', trend: '12% USED', icon: Database, color: 'text-blue-400', glow: 'neon-glow-blue' },
+                    { label: 'Network Flow', value: '942 MB/s', trend: '+12.4%', icon: Activity, color: 'text-blue-400', glow: 'neon-glow-blue' },
+                    { label: 'IO Velocity', value: '4.2k IOPS', trend: 'STEADY', icon: Pulse, color: 'text-indigo-400', glow: 'neon-glow-blue' },
+                ].map((stat) => (
+                    <motion.div 
+                        key={stat.label}
+                        whileHover={{ scale: 1.02 }}
+                        className={`nexus-card group ${stat.glow} transition-all duration-500`}
+                    >
+                        <div className="flex justify-between items-start mb-8">
+                            <div className={`p-5 rounded-2xl bg-white/[0.03] border border-white/5 ${stat.color} group-hover:scale-110 transition-all duration-500`}>
+                                <stat.icon size={26} />
+                            </div>
+                            <span className={`text-[10px] font-black tech-font tracking-widest px-4 py-1.5 rounded-full bg-white/[0.02] border border-white/5 ${stat.color}`}>
+                                {stat.trend}
+                            </span>
+                        </div>
+                        <h3 className="text-xs font-black text-white/30 uppercase tracking-[0.25em] mb-2">{stat.label}</h3>
+                        <p className="text-4xl font-black tracking-tighter">{stat.value}</p>
+                        
+                        <div className="mt-8 pt-8 border-t border-white/[0.03] flex items-center justify-between">
+                            <span className="text-[9px] font-black text-white/10 uppercase tracking-widest">Active Process</span>
+                            <div className="flex gap-1.5">
+                                {[1,2,3,4].map(b => (
+                                    <div key={b} className={`w-1 h-3.5 rounded-full ${stat.color} opacity-${b*2}0 animate-pulse`} style={{ animationDelay: `${b*0.2}s` }} />
+                                ))}
+                            </div>
+                        </div>
+                    </motion.div>
+                ))}
+              </div>
+
+              {/* Modular Command Sections */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
+                <div className="lg:col-span-2 space-y-12">
+                    {/* Living Throughput Velocity */}
+                    <div className="nexus-card">
+                        <div className="flex justify-between items-end mb-12">
+                            <div>
+                                <h3 className="text-2xl font-black tracking-tighter uppercase italic">Flow Velocity</h3>
+                                <p className="text-sm font-medium text-white/30 mt-2">Real-time I/O throughput spectral analysis</p>
+                            </div>
+                            <div className="flex items-center gap-10 tech-font">
+                                <div className="text-right">
+                                    <p className="text-[10px] font-black text-white/10 uppercase tracking-widest mb-2">Peak Read</p>
+                                    <p className="text-lg font-bold text-blue-400 tracking-tight">1.42 GB/s</p>
+                                </div>
+                                <div className="text-right border-l border-white/5 pl-10">
+                                    <p className="text-[10px] font-black text-white/10 uppercase tracking-widest mb-2">Peak Write</p>
+                                    <p className="text-lg font-bold text-purple-400 tracking-tight">890 MB/s</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="h-[350px] w-full mt-6">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <AreaChart data={performanceData}>
+                                    <defs>
+                                        <linearGradient id="colorThroughput" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
+                                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                                        </linearGradient>
+                                    </defs>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.02)" />
+                                    <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{fill: 'rgba(255,255,255,0.2)', fontSize: 10, fontWeight: 900}} />
+                                    <YAxis axisLine={false} tickLine={false} tick={{fill: 'rgba(255,255,255,0.2)', fontSize: 10, fontWeight: 900}} />
+                                    <Tooltip 
+                                        contentStyle={{backgroundColor: 'rgba(2, 6, 23, 0.9)', borderColor: 'rgba(255,255,255,0.05)', borderRadius: '2rem', backdropFilter: 'blur(25px)', padding: '1.5rem'}}
+                                        itemStyle={{color: '#fff', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase'}}
+                                    />
+                                    <Area type="monotone" dataKey="throughput" stroke="#3b82f6" strokeWidth={5} fillOpacity={1} fill="url(#colorThroughput)" />
+                                </AreaChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </div>
+
+                    {/* Node Overview & Active Pools */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                        <div className="nexus-card">
+                            <h3 className="text-sm font-black text-white/30 uppercase tracking-[0.25em] mb-10">System Repository</h3>
+                            <div className="space-y-8">
+                                {mockPools.map((pool) => (
+                                    <div key={pool.name} className="p-8 bg-white/[0.02] border border-white/5 rounded-[2rem] group hover:border-white/10 transition-all duration-500">
+                                        <div className="flex justify-between items-center mb-6">
+                                            <div className="flex items-center gap-5">
+                                                <div className="w-12 h-12 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-400 group-hover:scale-110 transition-all duration-500">
+                                                    <Database size={22} />
+                                                </div>
+                                                <span className="text-base font-bold tracking-tight">{pool.name}</span>
+                                            </div>
+                                            <span className="status-badge status-online text-[9px]">Online</span>
+                                        </div>
+                                        <div className="w-full h-2 bg-white/[0.03] rounded-full overflow-hidden mb-4 border border-white/5">
+                                            <motion.div 
+                                                initial={{ width: 0 }}
+                                                animate={{ width: `${pool.cap}%` }}
+                                                transition={{ duration: 1.5, ease: "easeOut" }}
+                                                className="h-full bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full" 
+                                            />
+                                        </div>
+                                        <div className="flex justify-between text-[11px] font-black tech-font text-white/20 uppercase tracking-widest">
+                                            <span>{pool.alloc} USED</span>
+                                            <span>{pool.size} TOTAL</span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="nexus-card">
+                            <h3 className="text-sm font-black text-white/30 uppercase tracking-[0.25em] mb-10">Process Registry</h3>
+                            <div className="space-y-5">
+                                {[
+                                    { label: 'ZFS Scrubbing', status: 'ACTIVE', progress: 42 },
+                                    { label: 'Cloud Replication', status: 'SYNCHING', progress: 88 },
+                                    { label: 'Auto Snapshot', status: 'IDLE', progress: 0 },
+                                    { label: 'Dataset Backup', status: 'QUEUED', progress: 0 },
+                                ].map((task) => (
+                                    <div key={task.label} className="flex items-center justify-between p-5 px-8 bg-white/[0.01] rounded-[1.5rem] border border-white/[0.02] hover:bg-white/[0.03] transition-all">
+                                        <div className="flex items-center gap-5">
+                                            <div className={`w-2.5 h-2.5 rounded-full ${task.progress > 0 ? 'bg-blue-400 animate-pulse shadow-[0_0_8px_rgba(59,130,246,0.5)]' : 'bg-white/10'}`} />
+                                            <span className="text-sm font-bold text-white/60">{task.label}</span>
+                                        </div>
+                                        <span className="text-[10px] font-black tech-font text-white/20 uppercase tracking-widest">{task.status}</span>
+                                    </div>
+                                ))}
+                            </div>
+                            <button className="apple-button apple-button-secondary w-full mt-10 text-[10px] h-14 uppercase tracking-[0.4em] font-black">Full Registry</button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Right Column: Node Pulse & Resources */}
+                <div className="space-y-12">
+                    <div className="nexus-card neon-glow-blue !p-0 overflow-hidden relative min-h-[500px] flex flex-col">
+                        <div className="p-12 relative z-10">
+                            <h3 className="text-2xl font-black tracking-tighter uppercase italic">Node Core</h3>
+                            <p className="text-sm font-medium text-white/30 mt-2">Resource allocation matrix</p>
+                        </div>
+                        
+                        <div className="absolute inset-0 flex items-center justify-center opacity-10 pointer-events-none">
+                             <div className="w-[400px] h-[400px] border-[1px] border-white/20 rounded-full animate-[spin_60s_linear_infinite]" />
+                             <div className="absolute w-[300px] h-[300px] border-[1px] border-white/20 border-dashed rounded-full animate-[spin_40s_linear_infinite_reverse]" />
+                             <div className="absolute w-[200px] h-[200px] border-[1px] border-white/20 rounded-full animate-[spin_20s_linear_infinite]" />
+                        </div>
+
+                        <div className="p-12 space-y-10 relative z-10 flex-1">
+                            {[
+                                { label: 'ARC Cache', value: '32.4 GB', percent: 85, color: 'bg-blue-500' },
+                                { label: 'CPU Cluster', value: '12% Load', percent: 12, color: 'bg-purple-500' },
+                                { label: 'L2ARC Hit', value: '4.2 k/s', percent: 65, color: 'bg-indigo-500' },
+                                { label: 'IO Wait', value: '0.04 ms', percent: 5, color: 'bg-emerald-500' },
+                            ].map((res) => (
+                                <div key={res.label}>
+                                    <div className="flex justify-between items-end mb-4">
+                                        <span className="text-[10px] font-black uppercase tracking-[0.25em] text-white/40">{res.label}</span>
+                                        <span className="text-base font-black tech-font text-white">{res.value}</span>
+                                    </div>
+                                    <div className="h-2 w-full bg-white/[0.03] rounded-full overflow-hidden border border-white/5">
+                                        <motion.div 
+                                            initial={{ width: 0 }}
+                                            animate={{ width: `${res.percent}%` }}
+                                            transition={{ duration: 2, ease: "circOut" }}
+                                            className={`h-full ${res.color} rounded-full`} 
+                                        />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        
+                        <div className="p-10 bg-blue-500/5 mt-auto border-t border-white/[0.05]">
+                            <div className="flex items-center gap-4">
+                                <Disk size={18} className="text-blue-400" />
+                                <span className="text-[10px] font-black uppercase tracking-[0.3em] text-white/40">Array Status: OPTIMIZED</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="nexus-card">
+                        <h3 className="text-sm font-black text-white/30 uppercase tracking-[0.25em] mb-10">Event Spectrum</h3>
+                        <div className="space-y-8">
+                            {[
+                                { msg: 'Pool scrubbing complete', time: '2m ago', type: 'info' },
+                                { msg: 'High ARC pressure detected', time: '12m ago', type: 'warn' },
+                                { msg: 'Snapshot delta generated', time: '45m ago', type: 'info' },
+                                { msg: 'Remote sync established', time: '1h ago', type: 'info' },
+                            ].map((ev, i) => (
+                                <div key={i} className="flex gap-6 items-start pb-8 border-b border-white/[0.03] last:border-0 last:pb-0 group">
+                                    <div className={`mt-2 w-2 h-2 rounded-full shrink-0 ${ev.type === 'info' ? 'bg-blue-400' : 'bg-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.5)]'}`} />
+                                    <div>
+                                        <p className="text-sm font-bold text-white/80 group-hover:text-white transition-colors">{ev.msg}</p>
+                                        <p className="text-[10px] font-black tech-font text-white/10 uppercase tracking-widest mt-2">{ev.time}</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        <button className="apple-button apple-button-secondary w-full mt-10 text-[10px] h-14 uppercase tracking-[0.4em] font-black">Audit History</button>
+                    </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === 'datasets' && (
+             <motion.div 
+                key="datasets"
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 1.02 }}
+             >
+                <DatasetList datasets={mockDatasets} />
+             </motion.div>
+          )}
+
+          {activeTab === 'permissions' && (
+             <motion.div 
+                key="permissions"
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 1.02 }}
+             >
+                <ACLManager />
+             </motion.div>
+          )}
+
+          {/* Nexus Placeholder for other modules */}
+          {['stats', 'pools', 'snapshots', 'replication', 'scrub', 'logs', 'settings'].includes(activeTab) && (
+            <motion.div 
+              key={activeTab}
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 1.05 }}
+              className="nexus-card min-h-[700px] flex items-center justify-center relative overflow-hidden"
+            >
+              <div className="absolute inset-0 flex items-center justify-center opacity-5 pointer-events-none">
+                <Zap size={500} />
+              </div>
+              <div className="text-center relative z-10 px-12">
+                <motion.div 
+                    initial={{ rotate: 0 }}
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 10, repeat: Infinity, ease: "linear" }}
+                    className="w-32 h-32 bg-blue-500/10 rounded-[3rem] flex items-center justify-center text-blue-400 mx-auto mb-12 border border-blue-500/20 shadow-[0_0_40px_rgba(59,130,246,0.1)]"
+                >
+                    <RefreshCw size={50} opacity={0.4} />
+                </motion.div>
+                <h3 className="text-5xl font-black tracking-tighter uppercase italic mb-6">Module Calibration</h3>
+                <p className="text-base font-medium text-white/30 max-w-lg mx-auto mb-12 leading-relaxed">
+                  The <span className="text-white uppercase font-black tracking-widest">{activeTab}</span> analytics spectrum is currently being established for your storage node.
+                </p>
+                <motion.button 
+                    whileHover={{ scale: 1.05, boxShadow: '0 0 30px rgba(59,130,246,0.4)' }}
+                    whileTap={{ scale: 0.95 }}
+                    className="apple-button apple-button-primary px-14 h-16 text-xs uppercase tracking-[0.4em] font-black"
+                >
+                    Sync Terminal
+                </motion.button>
+              </div>
+            </motion.div>
+          )}
         </AnimatePresence>
       </main>
+      
+      {/* Global Tech Overlay */}
+      <div className="fixed bottom-12 right-12 flex gap-5 z-50">
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="nexus-card !p-5 !px-8 !rounded-2xl border-white/5 bg-white/[0.05] tech-font text-[11px] font-black tracking-[0.3em] text-emerald-400/80 flex items-center gap-4 backdrop-blur-3xl"
+          >
+            <Pulse size={14} className="animate-pulse" />
+            LIVE LINK: SECURE
+          </motion.div>
+      </div>
     </div>
   );
 }
