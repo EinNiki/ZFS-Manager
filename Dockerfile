@@ -16,8 +16,11 @@ RUN touch src/main.rs && cargo build --release
 # ── Stage 2: Runtime ──────────────────────────────────────────────────────────
 FROM debian:bookworm-slim
 
-# Install ZFS userspace tools
-RUN apt-get update && \
+# Enable contrib repo (required for zfsutils-linux) and install ZFS tools
+RUN echo "deb http://deb.debian.org/debian bookworm main contrib" > /etc/apt/sources.list && \
+    echo "deb http://deb.debian.org/debian bookworm-updates main contrib" >> /etc/apt/sources.list && \
+    echo "deb http://deb.debian.org/debian-security bookworm-security main contrib" >> /etc/apt/sources.list && \
+    apt-get update && \
     apt-get install -y --no-install-recommends \
         zfsutils-linux \
         ca-certificates && \
