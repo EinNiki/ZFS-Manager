@@ -33,40 +33,54 @@ const menuItems = [
 
 export default function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
   return (
-    <div className="glass-sidebar w-72 flex flex-col p-6">
-      <div className="flex items-center gap-4 px-4 mb-12">
-        <div className="w-10 h-10 bg-zfs-accent rounded-xl flex items-center justify-center shadow-[0_0_20px_rgba(59,130,246,0.5)]">
+    <div className="glass-sidebar flex flex-col p-8">
+      <div className="flex items-center gap-5 px-4 mb-16">
+        <div className="w-12 h-12 bg-gradient-to-br from-zfs-accent to-indigo-600 rounded-[1.25rem] flex items-center justify-center shadow-[0_10px_20px_rgba(59,130,246,0.3)]">
           <HardDrive className="text-white" size={24} />
         </div>
-        <h1 className="text-xl font-bold tracking-tight text-white">ZFS Manager</h1>
+        <div>
+          <h1 className="text-xl font-bold tracking-tight text-white leading-none">ZFS Manager</h1>
+          <p className="text-[10px] font-black text-white/30 uppercase tracking-[0.2em] mt-1.5">v2.0 Premium</p>
+        </div>
       </div>
 
-      <nav className="flex-1 flex flex-col gap-2">
+      <nav className="flex-1 flex flex-col gap-3">
         {menuItems.map((item) => (
           <motion.div
             key={item.id}
-            whileHover={{ x: 4 }}
-            whileTap={{ scale: 0.98 }}
+            whileHover={{ x: 6 }}
+            whileTap={{ scale: 0.97 }}
             onClick={() => setActiveTab(item.id)}
             className={`nav-item group ${activeTab === item.id ? 'nav-item-active' : ''}`}
           >
-            <item.icon size={20} className={activeTab === item.id ? 'text-zfs-accent' : 'text-white/40 group-hover:text-white/60'} />
-            <span className="font-medium">{item.label}</span>
+            <item.icon 
+              size={20} 
+              className={`transition-colors duration-500 ${activeTab === item.id ? 'text-zfs-accent' : 'text-white/30 group-hover:text-white'}`} 
+            />
+            <span className={`text-sm font-bold tracking-wide transition-colors duration-500 ${activeTab === item.id ? 'text-white' : 'text-white/40 group-hover:text-white'}`}>
+              {item.label}
+            </span>
+            
             {activeTab === item.id && (
               <motion.div 
-                layoutId="active-pill"
-                className="ml-auto w-1.5 h-1.5 rounded-full bg-zfs-accent"
+                layoutId="active-highlight"
+                className="absolute inset-0 bg-white/[0.05] -z-10 rounded-2xl"
+                transition={{ type: "spring", bounce: 0.25, duration: 0.5 }}
               />
             )}
           </motion.div>
         ))}
       </nav>
 
-      <div className="mt-auto pt-6 border-t border-white/[0.05]">
-        <div className="nav-item group text-white/40 hover:text-rose-400 hover:bg-rose-500/10">
+      <div className="mt-8 pt-8 border-t border-white/10">
+        <motion.div 
+          whileHover={{ x: 6 }}
+          whileTap={{ scale: 0.97 }}
+          className="nav-item group text-white/30 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+        >
           <LogOut size={20} />
-          <span className="font-medium">Logout</span>
-        </div>
+          <span className="text-sm font-bold tracking-wide">Logout</span>
+        </motion.div>
       </div>
     </div>
   );
