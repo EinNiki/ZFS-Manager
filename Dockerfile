@@ -9,6 +9,11 @@ RUN mkdir src && echo 'fn main(){}' > src/main.rs
 RUN cargo build --release 2>/dev/null || true
 RUN rm -rf src
 
+# ARG CACHEBUST: pass a new value (e.g. git commit hash) to force recompile
+# Komodo: set build arg CACHEBUST=$(git rev-parse HEAD) in deploy settings
+ARG CACHEBUST=1
+RUN echo "Cache bust: $CACHEBUST"
+
 # Build the real binary
 COPY src ./src
 RUN touch src/main.rs && cargo build --release
@@ -28,9 +33,15 @@ RUN echo "deb http://deb.debian.org/debian bookworm main contrib" > /etc/apt/sou
 
 COPY --from=builder /app/target/release/zfs-manager /usr/local/bin/zfs-manager
 
+# Create data directory
+RUN mkdir -p /home/docker/zfs-manager
+
 EXPOSE 3000
 
 ENV ZFS_API_PORT=3000
 ENV RUST_LOG=info
+ENV ZFS_MANAGER_DATA=/home/docker/zfs-manager
+
+WORKDIR /home/docker/zfs-manager
 
 ENTRYPOINT ["/usr/local/bin/zfs-manager"]
