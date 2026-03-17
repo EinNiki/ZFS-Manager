@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Database, HardDrive, Activity, ShieldCircle, RefreshCw, Layers } from 'lucide-react';
-import { getDatasets, getPools, ZfsDataset, ZfsPool } from './api';
+import { Database, Activity, Shield, RefreshCw } from 'lucide-react';
+import { getDatasets, getPools } from './api';
+import type { ZfsDataset, ZfsPool } from './api';
 
 const App: React.FC = () => {
   const [datasets, setDatasets] = useState<ZfsDataset[]>([]);
@@ -105,7 +106,7 @@ const App: React.FC = () => {
 
       <section>
         <div className="flex items-center gap-3 mb-6">
-          <Layers className="text-emerald-500" />
+          <Database className="text-emerald-500" />
           <h2 className="text-2xl font-semibold">Datasets</h2>
         </div>
         <div className="glass rounded-2xl overflow-hidden border border-slate-800">
@@ -123,7 +124,7 @@ const App: React.FC = () => {
                 <tr key={ds.name} className="hover:bg-slate-800/30 transition-colors group">
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
-                      <ShieldCircle size={18} className="text-emerald-500 opacity-50 group-hover:opacity-100" />
+                      <Shield size={18} className="text-emerald-500 opacity-50 group-hover:opacity-100" />
                       <span className="text-white font-medium">{ds.name}</span>
                     </div>
                   </td>
