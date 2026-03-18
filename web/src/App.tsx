@@ -45,6 +45,8 @@ export default function App() {
   const [pools, setPools] = useState<ZFSPool[]>([]);
   const [datasets, setDatasets] = useState<ZFSDataset[]>([]);
   const [volumes, setVolumes] = useState<any[]>([]);
+  const [totalCapacity, setTotalCapacity] = useState<number>(0);
+  const [totalUsedStorage, setTotalUsedStorage] = useState<number>(0);
   const [selectedDataset, setSelectedDataset] = useState<string>('');
   const [stats, setStats] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -69,7 +71,12 @@ export default function App() {
         vdevs: []
       }));
 
+      const totalCap = (poolsRes.pools || []).reduce((acc: number, p: any) => acc + (Number(p.size) || 0), 0);
+      const totalUsed = (poolsRes.pools || []).reduce((acc: number, p: any) => acc + (Number(p.alloc) || 0), 0);
+
       setPools(mappedPools);
+      setTotalCapacity(totalCap);
+      setTotalUsedStorage(totalUsed);
 
       // Fetch Datasets & Volumes
       const [datasetsRes, volumesRes] = await Promise.all([
@@ -155,16 +162,8 @@ export default function App() {
   const renderContent = () => {
     const currentStats = stats[stats.length - 1] || { read: 0, write: 0, iops: 0 };
 
-    const totalSize = pools.reduce((acc: number, p: ZFSPool) => {
-      return acc + (Number(p.size) || 0);
-    }, 0);
-
-    const totalUsed = pools.reduce((acc: number, p: ZFSPool) => {
-      return acc + (Number(p.alloc) || 0);
-    }, 0);
-
     const formatSizeLong = (bytes: number) => {
-      return formatBytes(bytes, 1);
+      return formatBytes(bytes, 2);
     };
 
     const formatSize = (mb: number) => {
@@ -179,8 +178,8 @@ export default function App() {
             {/* Top Stats */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
               {[
-                { label: 'Total Capacity', value: formatSizeLong(totalSize), icon: Database, color: 'text-blue-400', trend: 'Live', up: true },
-                { label: 'Used Storage', value: formatSizeLong(totalUsed), icon: HardDrive, color: 'text-emerald-400', trend: `${totalSize > 0 ? ((totalUsed / totalSize) * 100).toFixed(2) : 0}%`, up: false },
+                { label: 'Total Capacity', value: formatSizeLong(totalCapacity), icon: Database, color: 'text-blue-400', trend: 'Live', up: true },
+                { label: 'Used Storage', value: formatSizeLong(totalUsedStorage), icon: HardDrive, color: 'text-emerald-400', trend: `${totalCapacity > 0 ? ((totalUsedStorage / totalCapacity) * 100).toFixed(2) : 0}%`, up: false },
                 { label: 'System Health', value: pools.every(p => p.health === 'ONLINE') ? 'Optimal' : 'Degraded', icon: ShieldCheck, color: 'text-indigo-400', trend: 'Stable', up: true },
                 { label: 'IOPS', value: `${(currentStats.iops / 1000).toFixed(2)}k`, icon: Zap, color: 'text-amber-400', trend: '+12%', up: true },
                 { label: 'Read Speed', value: `${currentStats.read.toFixed(2)} MB/s`, icon: ArrowDownRight, color: 'text-blue-500', trend: 'Live', up: true },

@@ -35,10 +35,10 @@ export default function DatasetList({ datasets }: DatasetListProps) {
                 </div>
                 <div>
                   <div className="flex items-center gap-3">
-                    <p className="text-base font-bold text-white">{ds.name}</p>
+                    <p className="text-base font-bold text-white">{ds.name.split('/').pop()}</p>
                     {ds.readonly && <Lock size={12} className="text-amber-400" />}
                   </div>
-                  <p className="text-[10px] text-white/30 font-mono mt-0.5">{ds.mountpoint}</p>
+                  <p className="text-[10px] text-white/30 font-mono mt-0.5">{ds.name}</p>
                 </div>
               </div>
               
