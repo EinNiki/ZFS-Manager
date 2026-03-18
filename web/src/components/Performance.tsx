@@ -1,5 +1,6 @@
 import React from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { Cpu, ShieldCheck } from 'lucide-react';
 
 interface PerformanceProps {
   stats: any[];
@@ -7,7 +8,7 @@ interface PerformanceProps {
 
 export default function Performance({ stats }: PerformanceProps) {
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 pb-10">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Throughput */}
         <div className="glass-panel p-8">
@@ -83,6 +84,94 @@ export default function Performance({ stats }: PerformanceProps) {
                   formatter={(value: number) => [value.toFixed(2), "IOPS"]}
                 />
                 <Area type="monotone" dataKey="iops" stroke="#F59E0B" fillOpacity={1} fill="url(#colorIops)" strokeWidth={2} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* CPU & System */}
+        <div className="glass-panel p-8">
+          <div className="flex justify-between items-center mb-8">
+            <div>
+              <h3 className="text-xl font-bold text-white">System Load</h3>
+              <p className="text-sm text-white/40">Real-time CPU and ARC performance</p>
+            </div>
+            <div className="flex gap-4">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-indigo-500" />
+                <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">CPU</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-emerald-400" />
+                <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">ARC Hit %</span>
+              </div>
+            </div>
+          </div>
+          <div className="h-[300px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={stats}>
+                <defs>
+                  <linearGradient id="colorCpu" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#6366F1" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#6366F1" stopOpacity={0}/>
+                  </linearGradient>
+                  <linearGradient id="colorArc" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#10B981" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                <XAxis dataKey="timestamp" axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10 }} minTickGap={30} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10 }} />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: '#0C1327', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }}
+                />
+                <Area type="monotone" dataKey="cpu" stroke="#6366F1" fillOpacity={1} fill="url(#colorCpu)" strokeWidth={2} />
+                <Area type="monotone" dataKey="arcHit" stroke="#10B981" fillOpacity={1} fill="url(#colorArc)" strokeWidth={2} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Space Utilization */}
+        <div className="glass-panel p-8">
+          <div className="flex justify-between items-center mb-8">
+            <div>
+              <h3 className="text-xl font-bold text-white">Storage Trends</h3>
+              <p className="text-sm text-white/40">Allocated vs Free space history (GB)</p>
+            </div>
+            <div className="flex gap-4">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-rose-500" />
+                <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Used</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-blue-500" />
+                <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Free</span>
+              </div>
+            </div>
+          </div>
+          <div className="h-[300px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={stats}>
+                <defs>
+                  <linearGradient id="colorUsed" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#F43F5E" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#F43F5E" stopOpacity={0}/>
+                  </linearGradient>
+                  <linearGradient id="colorFree" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#3B82F6" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                <XAxis dataKey="timestamp" axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10 }} minTickGap={30} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10 }} />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: '#0C1327', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }}
+                />
+                <Area type="monotone" dataKey="alloc" stroke="#F43F5E" fillOpacity={1} fill="url(#colorUsed)" strokeWidth={2} />
+                <Area type="monotone" dataKey="free" stroke="#3B82F6" fillOpacity={1} fill="url(#colorFree)" strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
           </div>

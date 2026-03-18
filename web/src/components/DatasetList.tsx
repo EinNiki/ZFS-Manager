@@ -5,6 +5,8 @@ import { motion } from 'motion/react';
 
 interface DatasetListProps {
   datasets: ZFSDataset[];
+  selectedName?: string;
+  onSelect?: (name: string) => void;
 }
 
 export default function DatasetList({ datasets }: DatasetListProps) {

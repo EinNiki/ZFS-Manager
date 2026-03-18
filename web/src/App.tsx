@@ -16,21 +16,12 @@ import SystemLogs from './components/SystemLogs';
 import Login from './components/Login';
 import { ZFSPool, ZFSDataset, ZFSLog } from './types';
 import { api, formatBytes, setApiKey } from './api';
-
-// Protected Route Wrapper
-const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const token = localStorage.getItem('zfs_access_token');
-  const location = useLocation();
-
-  if (!token) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
-  }
-
-  return <>{children}</>;
-};
+import { Menu, X, HardDrive } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('zfs_access_token'));
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [pools, setPools] = useState<ZFSPool[]>([]);
   const [datasets, setDatasets] = useState<ZFSDataset[]>([]);
   const [volumes, setVolumes] = useState<any[]>([]);
@@ -40,22 +31,31 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [logs, setLogs] = useState<ZFSLog[]>([]);
   const [snapshots, setSnapshots] = useState<any[]>([]);
+  const [systemStats, setSystemStats] = useState<any>(null);
 
-  const handleLogin = (password: string) => {
-    // In a real app, we'd call a /login endpoint. 
-    // Here, the password IS the API key, so we just set it.
-    setApiKey(password);
-    setIsAuthenticated(true);
+  const handleLogin = async (password: string) => {
+    try {
+      setApiKey(password);
+      await api.getPools();
+      setIsAuthenticated(true);
+    } catch (err: any) {
+      localStorage.removeItem('zfs_access_token');
+      setIsAuthenticated(false);
+      throw new Error('Invalid authentication password');
+    }
   };
 
   const fetchData = async () => {
     if (!isAuthenticated) return;
     
     try {
-      const [poolsRes, snapshotRes] = await Promise.all([
+      const [poolsRes, snapshotRes, statsRes] = await Promise.all([
         api.getPools(),
-        api.getSnapshots()
+        api.getSnapshots(),
+        api.getSystemStats().catch(() => null)
       ]);
+
+      if (statsRes) setSystemStats(statsRes);
 
       const mappedPools: ZFSPool[] = (poolsRes.pools || []).map((p: any) => ({
         name: p.name,
@@ -80,7 +80,7 @@ export default function App() {
         api.getVolumes()
       ]);
 
-      const mappedDatasets: ZFSDataset[] = (datasetsRes.datasets || []).map((d: any) => ({
+      setDatasets((datasetsRes.datasets || []).map((d: any) => ({
         id: d.name,
         name: d.name,
         used: formatBytes(d.used, 2),
@@ -90,22 +90,20 @@ export default function App() {
         compression: d.compression || 'on',
         dedup: d.dedup || 'off',
         readonly: d.readonly === 'on' || d.readonly === true
-      }));
+      })));
 
-      const mappedVolumes = (volumesRes.volumes || []).map((v: any) => ({
+      setVolumes((volumesRes.volumes || []).map((v: any) => ({
         ...v,
         used: formatBytes(v.used, 2),
         avail: formatBytes(v.avail, 2),
         volsize: formatBytes(v.volsize, 2),
         refer: formatBytes(v.refer, 2),
-      }));
+      })));
 
-      setDatasets(mappedDatasets);
-      setVolumes(mappedVolumes);
       setSnapshots(snapshotRes.snapshots || []);
       
       if (mappedPools.length > 0) {
-        const iostatRes = await api.getPoolIoStat(poolsRes.pools[0].name);
+        const iostatRes = await api.getPoolIoStat(mappedPools[0].name);
         if (iostatRes.iostat && iostatRes.iostat.length > 0) {
           const statsRow = iostatRes.iostat[0];
           const read = parseFloat(statsRow[3]) / 1024 / 1024;
@@ -120,9 +118,10 @@ export default function App() {
               read, 
               write,
               iops: readIops + writeIops,
-              arcHit: Math.random() * 20 + 75,
-              l2arcHit: Math.random() * 5 + 90,
-              latency: Math.random() * 2 + 0.5
+              cpu: statsRes?.cpu_load?.[0] || 0.42,
+              arcHit: statsRes?.arc_hit_ratio || 98.2,
+              alloc: Number(statsRow[1]) / 1024 / 1024 / 1024, // GB
+              free: Number(statsRow[2]) / 1024 / 1024 / 1024, // GB
             }];
             return newStats.slice(-30);
           });
@@ -148,74 +147,115 @@ export default function App() {
     }
   }, [isAuthenticated]);
 
-  const formatSizeLong = (bytes: number) => formatBytes(bytes, 2);
-
-  if (!isAuthenticated) {
-    return <Login onLogin={handleLogin} />;
-  }
+  if (!isAuthenticated) return <Login onLogin={handleLogin} />;
 
   return (
     <BrowserRouter>
-      <div className="flex min-h-screen bg-[#070B14] text-white selection:bg-zfs-accent/30">
-        <Sidebar />
-        <main className="flex-1 flex flex-col p-10 overflow-y-auto max-h-screen custom-scrollbar">
-          <Routes>
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route path="/dashboard" element={
-              <Dashboard 
-                pools={pools} 
-                totalCapacity={totalCapacity} 
-                totalUsedStorage={totalUsedStorage} 
-                currentStats={stats[stats.length - 1] || { read: 0, write: 0, iops: 0 }}
-                formatSizeLong={formatSizeLong}
+      <div className="flex h-screen bg-[#070B14] text-white selection:bg-zfs-accent/30 overflow-hidden">
+        {/* Desktop Sidebar */}
+        <div className="hidden lg:block h-full">
+          <Sidebar />
+        </div>
+
+        {/* Mobile Sidebar Overlay */}
+        <AnimatePresence>
+          {isMobileMenuOpen && (
+            <>
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] lg:hidden"
               />
-            } />
-            <Route path="/stats" element={<Performance stats={stats} />} />
-            <Route path="/pools" element={<StoragePools pools={pools} />} />
-            <Route path="/datasets" element={
-              <div className="space-y-8">
-                <div className="flex justify-between items-center mr-8">
-                   <h2 className="text-2xl font-bold">Datasets & Volumes</h2>
-                   <button className="apple-button apple-button-primary">Create New</button>
-                </div>
-                <DatasetList datasets={datasets} selectedName="" onSelect={() => {}} />
-                {volumes.length > 0 && (
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-bold text-white/40 uppercase tracking-widest mt-10">ZVOL Volumes</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                      {volumes.map((v: any, i: number) => (
-                        <div key={i} className="glass-panel p-6 border-white/[0.05] hover:bg-white/[0.03] transition-all">
-                           <div className="flex justify-between items-start mb-4">
-                             <div className="font-bold text-white">{v.name}</div>
-                             <div className="text-[10px] font-bold text-white/20 uppercase tracking-widest">Active</div>
-                           </div>
-                           <div className="grid grid-cols-2 gap-4">
-                             <div>
-                               <div className="text-[10px] text-white/20 uppercase font-bold">Size</div>
-                               <div className="text-sm font-bold">{v.volsize}</div>
-                             </div>
-                             <div>
-                               <div className="text-[10px] text-white/20 uppercase font-bold">Used</div>
-                               <div className="text-sm font-bold">{v.used}</div>
-                             </div>
-                           </div>
-                        </div>
-                      ))}
-                    </div>
+              <motion.div 
+                initial={{ x: '-100%' }}
+                animate={{ x: 0 }}
+                exit={{ x: '-100%' }}
+                className="fixed inset-y-0 left-0 z-[101] lg:hidden"
+              >
+                <Sidebar onClose={() => setIsMobileMenuOpen(false)} />
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
+
+        <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
+          {/* Mobile Header */}
+          <header className="lg:hidden flex items-center justify-between p-6 border-b border-white/[0.05] bg-[#0C1327]/80 backdrop-blur-md">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-zfs-accent rounded-lg flex items-center justify-center">
+                <HardDrive className="text-white" size={18} />
+              </div>
+              <span className="font-bold text-lg">ZFS Manager</span>
+            </div>
+            <button 
+              onClick={() => setIsMobileMenuOpen(true)}
+              className="p-2 text-white hover:bg-white/5 rounded-lg"
+            >
+              <Menu size={24} />
+            </button>
+          </header>
+
+          <div className="flex-1 overflow-y-auto p-6 md:p-10 custom-scrollbar">
+            <Routes>
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/dashboard" element={
+                <Dashboard 
+                  pools={pools} 
+                  totalCapacity={totalCapacity} 
+                  totalUsedStorage={totalUsedStorage} 
+                  currentStats={stats[stats.length - 1] || { read: 0, write: 0, iops: 0, cpu: 0, arcHit: 0 }}
+                  formatSizeLong={(b) => formatBytes(b, 2)}
+                />
+              } />
+              <Route path="/stats" element={<Performance stats={stats} />} />
+              <Route path="/pools" element={<StoragePools pools={pools} />} />
+              <Route path="/datasets" element={
+                <div className="space-y-8">
+                  <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
+                     <h2 className="text-2xl font-bold">Datasets & Volumes</h2>
+                     <button className="apple-button apple-button-primary w-fit">Create New</button>
                   </div>
-                )}
-              </div>
-            } />
-            <Route path="/snapshots" element={<SnapshotManager snapshots={snapshots} />} />
-            <Route path="/logs" element={<SystemLogs logs={logs} />} />
-            <Route path="/settings" element={
-              <div className="glass-panel p-10 flex flex-col items-center justify-center text-center">
-                <h3 className="text-2xl font-bold mb-4">Application Settings</h3>
-                <p className="text-white/40 max-w-md">Configuration options for the ZFS Manager interface and node connection.</p>
-              </div>
-            } />
-            <Route path="/login" element={<Navigate to="/dashboard" replace />} />
-          </Routes>
+                  <DatasetList datasets={datasets} selectedName="" onSelect={() => {}} />
+                  {volumes.length > 0 && (
+                    <div className="space-y-4">
+                      <h3 className="text-lg font-bold text-white/40 uppercase tracking-widest mt-10 text-center md:text-left">ZVOL Volumes</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                        {volumes.map((v, i) => (
+                          <div key={i} className="glass-panel p-6 border-white/[0.05] hover:bg-white/[0.03] transition-all">
+                             <div className="flex justify-between items-start mb-4">
+                               <div className="font-bold text-white truncate max-w-[150px]">{v.name}</div>
+                               <div className="text-[10px] font-bold text-white/20 uppercase tracking-widest">Active</div>
+                             </div>
+                             <div className="grid grid-cols-2 gap-4">
+                               <div>
+                                 <div className="text-[10px] text-white/20 uppercase font-bold">Size</div>
+                                 <div className="text-sm font-bold">{v.volsize}</div>
+                               </div>
+                               <div>
+                                 <div className="text-[10px] text-white/20 uppercase font-bold">Used</div>
+                                 <div className="text-sm font-bold">{v.used}</div>
+                               </div>
+                             </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              } />
+              <Route path="/snapshots" element={<SnapshotManager snapshots={snapshots} />} />
+              <Route path="/logs" element={<SystemLogs logs={logs} />} />
+              <Route path="/settings" element={
+                <div className="glass-panel p-10 flex flex-col items-center justify-center text-center">
+                  <h3 className="text-2xl font-bold mb-4">Application Settings</h3>
+                  <p className="text-white/40 max-w-md">Configuration options for the ZFS Manager interface and node connection.</p>
+                </div>
+              } />
+              <Route path="/login" element={<Navigate to="/dashboard" replace />} />
+            </Routes>
+          </div>
         </main>
       </div>
     </BrowserRouter>

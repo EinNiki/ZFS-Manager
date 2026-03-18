@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { HardDrive, Lock, ArrowRight, ShieldCheck, AlertCircle } from 'lucide-react';
 
 interface LoginProps {
-  onLogin: (password: string) => void;
+  onLogin: (password: string) => Promise<void>;
 }
 
 export default function Login({ onLogin }: LoginProps) {
@@ -11,17 +11,18 @@ export default function Login({ onLogin }: LoginProps) {
   const [isError, setIsError] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setIsError(false);
     
-    // Simulate slight delay for premium feel
-    setTimeout(() => {
-      onLogin(password);
+    try {
+      await onLogin(password);
+      // If success, App.tsx will re-render and Login will unmount
+    } catch (err) {
+      setIsError(true);
       setIsLoading(false);
-      // Parent will handle actual verification and set error if it fails
-    }, 800);
+    }
   };
 
   return (

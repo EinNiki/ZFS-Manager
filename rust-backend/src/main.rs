@@ -60,6 +60,7 @@ async fn main() {
         .merge(routes::pools::router())
         .merge(routes::datasets::router())
         .merge(routes::snapshots::router())
+        .merge(routes::stats::router())
         .merge(routes::volumes::router())
         .merge(routes::clones::router())
         .merge(routes::properties::router())

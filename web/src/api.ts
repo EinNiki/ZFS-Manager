@@ -60,10 +60,10 @@ export const api = {
   // Volumes
   getVolumes: () => request<{ volumes: any[] }>('/volumes'),
 
-  // Properties
-  getProperties: (dataset: string) => request<{ properties: any[] }>(`/properties/${dataset}`),
-  setProperty: (dataset: string, prop: string, value: string) =>
-    request<any>(`/properties/${dataset}`, { method: 'PUT', body: JSON.stringify({ prop, value }) }),
-  inheritProperty: (dataset: string, prop: string) =>
-    request<any>(`/properties/${dataset}`, { method: 'DELETE', body: JSON.stringify({ prop }) }),
+  // Stats
+  getSystemStats: () => request<any>('/stats/system'),
+
+  // Extra Pool Info
+  getPoolStatusDetail: (name: string) => request<any>(`/pools/${name}/status`),
+  getPoolHistory: (name: string) => request<any>(`/pools/${name}/history`),
 };

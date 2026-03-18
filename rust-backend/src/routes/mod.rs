@@ -4,4 +4,5 @@ pub mod health;
 pub mod pools;
 pub mod properties;
 pub mod snapshots;
+pub mod stats;
 pub mod volumes;

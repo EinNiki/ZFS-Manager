@@ -108,21 +108,21 @@ export default function Dashboard({
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               <div className="space-y-2">
-                <span className="text-[10px] font-bold text-white/20 uppercase tracking-widest">Network In</span>
+                <span className="text-[10px] font-bold text-white/20 uppercase tracking-widest">CPU Load</span>
                 <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-blue-500/10 text-blue-400">
-                    <ArrowDownRight size={16} />
+                  <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-400">
+                    <Cpu size={16} />
                   </div>
-                  <span className="text-xl font-bold text-white tracking-tight">{currentStats.read.toFixed(2)} MB/s</span>
+                  <span className="text-xl font-bold text-white tracking-tight">{(currentStats as any).cpu?.toFixed(2) || '0.00'}</span>
                 </div>
               </div>
               <div className="space-y-2">
-                <span className="text-[10px] font-bold text-white/20 uppercase tracking-widest">Network Out</span>
+                <span className="text-[10px] font-bold text-white/20 uppercase tracking-widest">ARC Hit Ratio</span>
                 <div className="flex items-center gap-3">
                   <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400">
-                    <ArrowUpRight size={16} />
+                    <ShieldCheck size={16} />
                   </div>
-                  <span className="text-xl font-bold text-white tracking-tight">{currentStats.write.toFixed(2)} MB/s</span>
+                  <span className="text-xl font-bold text-white tracking-tight">{(currentStats as any).arcHit?.toFixed(1) || '0.0'}%</span>
                 </div>
               </div>
               <div className="space-y-2">
