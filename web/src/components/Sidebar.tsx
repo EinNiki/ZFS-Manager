@@ -141,3 +141,5 @@ export default function Sidebar({ onClose }: SidebarProps) {
         </button>
       </div>
     </motion.div>
+  );
+}
