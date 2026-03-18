@@ -60,9 +60,9 @@ export default function App() {
 
       const mappedPools: ZFSPool[] = (poolsRes.pools || []).map((p: any) => ({
         name: p.name,
-        size: p.size,
-        alloc: p.alloc,
-        free: p.free,
+        size: formatBytes(p.size, 2),
+        alloc: formatBytes(p.alloc, 2),
+        free: formatBytes(p.free, 2),
         cap: parseInt(p.cap),
         health: p.health,
         raidType: 'ZFS Pool',
@@ -71,11 +71,37 @@ export default function App() {
 
       setPools(mappedPools);
 
-      // Fetch Datasets
-      const datasetsRes = await api.getDatasets();
-      setDatasets(datasetsRes.datasets);
-      if (datasetsRes.datasets.length > 0 && !selectedDataset) {
-        setSelectedDataset(datasetsRes.datasets[0].name);
+      // Fetch Datasets & Volumes
+      const [datasetsRes, volumesRes] = await Promise.all([
+        api.getDatasets(),
+        api.getVolumes()
+      ]);
+
+      const mappedDatasets: ZFSDataset[] = (datasetsRes.datasets || []).map((d: any) => ({
+        id: d.name,
+        name: d.name,
+        used: formatBytes(d.used, 2),
+        avail: formatBytes(d.available || d.avail, 2),
+        refer: formatBytes(d.refer, 2),
+        mountpoint: d.mountpoint,
+        compression: d.compression || 'on',
+        dedup: d.dedup || 'off',
+        readonly: d.readonly === 'on' || d.readonly === true
+      }));
+
+      const mappedVolumes = (volumesRes.volumes || []).map((v: any) => ({
+        ...v,
+        used: formatBytes(v.used, 2),
+        avail: formatBytes(v.avail, 2),
+        volsize: formatBytes(v.volsize, 2),
+        refer: formatBytes(v.refer, 2),
+      }));
+
+      setDatasets(mappedDatasets);
+      setVolumes(mappedVolumes);
+
+      if (mappedDatasets.length > 0 && !selectedDataset) {
+        setSelectedDataset(mappedDatasets[0].name);
       }
       setSnapshots(snapshotRes.snapshots || []);
       
@@ -154,11 +180,11 @@ export default function App() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
               {[
                 { label: 'Total Capacity', value: formatSizeLong(totalSize), icon: Database, color: 'text-blue-400', trend: 'Live', up: true },
-                { label: 'Used Storage', value: formatSizeLong(totalUsed), icon: HardDrive, color: 'text-emerald-400', trend: `${totalSize > 0 ? ((totalUsed / totalSize) * 100).toFixed(1) : 0}%`, up: false },
+                { label: 'Used Storage', value: formatSizeLong(totalUsed), icon: HardDrive, color: 'text-emerald-400', trend: `${totalSize > 0 ? ((totalUsed / totalSize) * 100).toFixed(2) : 0}%`, up: false },
                 { label: 'System Health', value: pools.every(p => p.health === 'ONLINE') ? 'Optimal' : 'Degraded', icon: ShieldCheck, color: 'text-indigo-400', trend: 'Stable', up: true },
-                { label: 'IOPS', value: `${(currentStats.iops / 1000).toFixed(1)}k`, icon: Zap, color: 'text-amber-400', trend: '+12%', up: true },
-                { label: 'Read Speed', value: `${currentStats.read} MB/s`, icon: ArrowDownRight, color: 'text-blue-500', trend: 'Live', up: true },
-                { label: 'Write Speed', value: `${currentStats.write} MB/s`, icon: ArrowUpRight, color: 'text-emerald-500', trend: 'Live', up: true },
+                { label: 'IOPS', value: `${(currentStats.iops / 1000).toFixed(2)}k`, icon: Zap, color: 'text-amber-400', trend: '+12%', up: true },
+                { label: 'Read Speed', value: `${currentStats.read.toFixed(2)} MB/s`, icon: ArrowDownRight, color: 'text-blue-500', trend: 'Live', up: true },
+                { label: 'Write Speed', value: `${currentStats.write.toFixed(2)} MB/s`, icon: ArrowUpRight, color: 'text-emerald-500', trend: 'Live', up: true },
               ].map((stat, i) => (
                 <motion.div
                   key={i}
@@ -332,7 +358,10 @@ export default function App() {
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                       <XAxis dataKey="timestamp" axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10 }} minTickGap={30} />
                       <YAxis axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10 }} />
-                      <Tooltip contentStyle={{ backgroundColor: '#0C1327', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }} />
+                      <Tooltip 
+                        contentStyle={{ backgroundColor: '#0C1327', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }}
+                        formatter={(value: number) => [value.toFixed(2), ""]}
+                      />
                       <Area type="monotone" dataKey="read" stroke="#3B82F6" fillOpacity={1} fill="url(#colorRead)" strokeWidth={2} />
                       <Area type="monotone" dataKey="write" stroke="#10B981" fillOpacity={1} fill="url(#colorWrite)" strokeWidth={2} />
                     </AreaChart>
@@ -363,7 +392,10 @@ export default function App() {
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                       <XAxis dataKey="timestamp" axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10 }} minTickGap={30} />
                       <YAxis axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10 }} />
-                      <Tooltip contentStyle={{ backgroundColor: '#0C1327', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }} />
+                      <Tooltip 
+                        contentStyle={{ backgroundColor: '#0C1327', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }}
+                        formatter={(value: number) => [value.toFixed(2), ""]}
+                      />
                       <Area type="monotone" dataKey="iops" stroke="#F59E0B" fillOpacity={1} fill="url(#colorIops)" strokeWidth={2} />
                     </AreaChart>
                   </ResponsiveContainer>
@@ -404,7 +436,10 @@ export default function App() {
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                       <XAxis dataKey="timestamp" axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10 }} minTickGap={30} />
                       <YAxis axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10 }} domain={[0, 100]} />
-                      <Tooltip contentStyle={{ backgroundColor: '#0C1327', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }} />
+                      <Tooltip 
+                        contentStyle={{ backgroundColor: '#0C1327', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }}
+                        formatter={(value: number) => [value.toFixed(2), ""]}
+                      />
                       <Area type="monotone" dataKey="arcHit" stroke="#818CF8" fillOpacity={1} fill="url(#colorArc)" strokeWidth={2} />
                       <Area type="monotone" dataKey="l2arcHit" stroke="#A78BFA" fillOpacity={1} fill="url(#colorL2arc)" strokeWidth={2} />
                     </AreaChart>
@@ -435,7 +470,10 @@ export default function App() {
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                       <XAxis dataKey="timestamp" axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10 }} minTickGap={30} />
                       <YAxis axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10 }} />
-                      <Tooltip contentStyle={{ backgroundColor: '#0C1327', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }} />
+                      <Tooltip 
+                        contentStyle={{ backgroundColor: '#0C1327', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }}
+                        formatter={(value: number) => [value.toFixed(2), "ms"]}
+                      />
                       <Area type="monotone" dataKey="latency" stroke="#FB7185" fillOpacity={1} fill="url(#colorLatency)" strokeWidth={2} />
                     </AreaChart>
                   </ResponsiveContainer>
