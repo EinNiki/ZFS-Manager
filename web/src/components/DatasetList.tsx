@@ -1,6 +1,6 @@
 import React from 'react';
 import { ZFSDataset } from '../types';
-import { MoreVertical, HardDrive, Settings, Plus, Shield, Zap, Lock } from 'lucide-react';
+import { MoreVertical, HardDrive, Settings, Plus, Lock } from 'lucide-react';
 import { motion } from 'motion/react';
 
 interface DatasetListProps {
@@ -55,13 +55,44 @@ export default function DatasetList({ datasets }: DatasetListProps) {
                 </div>
 
                 <div className="text-right min-w-[120px]">
-                  <p className="text-[9px] font-bold text-white/20 uppercase tracking-widest mb-1.5 text-left">Usage</p>
-                  <div className="flex items-center gap-3">
-                    <div className="w-24 h-1 bg-white/5 rounded-full overflow-hidden">
-                      <div className="h-full bg-zfs-accent rounded-full" style={{ width: '45%' }} />
-                    </div>
-                    <p className="text-xs font-bold text-white/80">{ds.used}</p>
-                  </div>
+                  {(() => {
+                    const usedMatch = ds.used.match(/(\d+(\.\d+)?)\s*(\w+)/);
+                    const availMatch = ds.avail.match(/(\d+(\.\d+)?)\s*(\w+)/);
+                    let percent = 0;
+                    if (usedMatch && availMatch) {
+                      const u = parseFloat(usedMatch[1]);
+                      const a = parseFloat(availMatch[1]);
+                      const uUnit = usedMatch[3].toUpperCase();
+                      const aUnit = availMatch[3].toUpperCase();
+                      
+                      const toMb = (v: number, unit: string) => {
+                        if (unit.startsWith('T')) return v * 1024 * 1024;
+                        if (unit.startsWith('G')) return v * 1024;
+                        if (unit.startsWith('K')) return v / 1024;
+                        return v;
+                      };
+                      
+                      const uMb = toMb(u, uUnit);
+                      const aMb = toMb(a, aUnit);
+                      percent = (uMb / (uMb + aMb)) * 100;
+                    }
+
+                    return (
+                      <>
+                        <p className="text-[9px] font-bold text-white/20 uppercase tracking-widest mb-1.5 text-left">Usage</p>
+                        <div className="flex items-center gap-3">
+                          <div className="w-24 h-1 bg-white/5 rounded-full overflow-hidden">
+                            <motion.div 
+                              initial={{ width: 0 }}
+                              animate={{ width: `${percent}%` }}
+                              className="h-full bg-zfs-accent rounded-full" 
+                            />
+                          </div>
+                          <p className="text-xs font-bold text-white/80">{ds.used}</p>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
 
                 <div className="flex items-center gap-2">

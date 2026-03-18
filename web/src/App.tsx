@@ -1,137 +1,150 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Plus, 
-  Search, 
-  Bell, 
-  User, 
-  Activity, 
+  Database, 
   HardDrive, 
-  ShieldCheck, 
-  Database,
-  Camera,
+  Settings, 
+  Activity,
+  ChevronRight,
+  Plus,
   RefreshCw,
-  Layers,
-  LayoutDashboard,
-  Zap,
-  Cpu,
+  Clock,
   ArrowUpRight,
   ArrowDownRight,
-  Settings as SettingsIcon,
-  ChevronRight,
+  ShieldCheck,
+  Zap,
   MoreHorizontal,
-  Lock,
-  Unlock,
-  Terminal,
-  Server,
-  Key,
-  FileText,
-  Info,
+  Camera,
+  Trash2,
   AlertTriangle,
-  XCircle,
   Thermometer,
-  Clock,
   CheckCircle2,
-  BarChart3
+  XCircle,
+  Info,
+  Server,
+  Terminal,
+  Key,
+  Search,
+  Bell,
+  User
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion'; // Changed from 'motion/react' to 'framer-motion'
 import Sidebar from './components/Sidebar';
 import DatasetList from './components/DatasetList';
-import ACLManager from './components/ACLManager';
-import StatCard from './components/StatCard';
-import { ZFSPool, ZFSDataset, DiskStat, ZFSLog, DiskSmart } from './types';
+import PropertiesManager from './components/PropertiesManager';
+import { ZFSPool, ZFSDataset, ZFSLog, DiskSmart } from './types';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { api, formatBytes } from './api';
 
-// Mock Data
-const mockPools: ZFSPool[] = [
-  {
-    name: 'tank',
-    size: '12.4TB',
-    alloc: '5.2TB',
-    free: '7.2TB',
-    cap: 42,
-    health: 'ONLINE',
-    raidType: 'RAID-Z2',
-    vdevs: [
-      { id: 'vdev-1', name: 'raidz2-0', type: 'raidz2', status: 'ONLINE', disks: ['sda', 'sdb', 'sdc', 'sdd', 'sde', 'sdf'] }
-    ]
-  },
-  {
-    name: 'fast-pool',
-    size: '1.8TB',
-    alloc: '450GB',
-    free: '1.35TB',
-    cap: 25,
-    health: 'ONLINE',
-    raidType: 'Mirror',
-    vdevs: [
-      { id: 'vdev-2', name: 'mirror-0', type: 'mirror', status: 'ONLINE', disks: ['nvme0n1', 'nvme1n1'] }
-    ]
-  }
-];
+// Types and constants
+// API_BASE_URL removed as it's not used directly here
 
-const mockDatasets: ZFSDataset[] = [
-  { id: '1', name: 'tank/data', used: '2.4TB', avail: '4.8TB', refer: '2.4TB', mountpoint: '/mnt/tank/data', compression: 'lz4', dedup: 'off', readonly: false },
-  { id: '2', name: 'tank/backups', used: '1.8TB', avail: '5.4TB', refer: '1.8TB', mountpoint: '/mnt/tank/backups', compression: 'zstd', dedup: 'off', readonly: true },
-  { id: '3', name: 'fast-pool/vms', used: '320GB', avail: '1.48TB', refer: '320GB', mountpoint: '/mnt/fast/vms', compression: 'lz4', dedup: 'off', readonly: false },
-  { id: '4', name: 'fast-pool/docker', used: '85GB', avail: '1.71TB', refer: '85GB', mountpoint: '/var/lib/docker', compression: 'lz4', dedup: 'off', readonly: false },
-];
-
-const mockLogs: ZFSLog[] = [
-  { id: '1', timestamp: '2026-03-06 14:20:12', level: 'info', message: 'Pool "tank" scrub started.', pool: 'tank' },
-  { id: '2', timestamp: '2026-03-06 14:25:45', level: 'info', message: 'Dataset "tank/data" property "compression" set to "lz4".', pool: 'tank' },
-  { id: '3', timestamp: '2026-03-06 14:30:00', level: 'warning', message: 'Disk "sde" reported high temperature (45°C).', pool: 'tank' },
-  { id: '4', timestamp: '2026-03-06 14:32:10', level: 'info', message: 'Snapshot "tank/data@hourly-1" created.', pool: 'tank' },
-  { id: '5', timestamp: '2026-03-06 14:35:00', level: 'error', message: 'Replication task "tank/data → remote" failed: Connection timed out.', pool: 'tank' },
-];
-
-const mockSmartData: DiskSmart[] = [
-  { device: 'sda', model: 'Samsung SSD 870', serial: 'S5YJN123456', temperature: 32, powerOnHours: 12450, status: 'PASSED', reallocatedSectors: 0 },
-  { device: 'sdb', model: 'Samsung SSD 870', serial: 'S5YJN123457', temperature: 33, powerOnHours: 12452, status: 'PASSED', reallocatedSectors: 0 },
-  { device: 'sdc', model: 'WD Red Pro', serial: 'WD-WCC123456', temperature: 38, powerOnHours: 25600, status: 'PASSED', reallocatedSectors: 0 },
-  { device: 'sdd', model: 'WD Red Pro', serial: 'WD-WCC123457', temperature: 39, powerOnHours: 25605, status: 'PASSED', reallocatedSectors: 0 },
-];
-
-const generateMockStats = () => {
-  const stats: any[] = [];
-  const now = new Date();
-  for (let i = 0; i < 20; i++) {
-    stats.push({
-      timestamp: new Date(now.getTime() - (20 - i) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      read: Math.floor(Math.random() * 500) + 100,
-      write: Math.floor(Math.random() * 300) + 50,
-      iops: Math.floor(Math.random() * 5000) + 1000,
-      latency: (Math.random() * 5 + 1).toFixed(2),
-      arcHit: Math.floor(Math.random() * 10) + 90,
-      l2arcHit: Math.floor(Math.random() * 20) + 70,
-    });
-  }
-  return stats;
-};
+// No mock data needed here
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [stats, setStats] = useState<any[]>(generateMockStats());
+  const [pools, setPools] = useState<ZFSPool[]>([]);
+  const [datasets, setDatasets] = useState<ZFSDataset[]>([]);
+  const [volumes, setVolumes] = useState<any[]>([]);
+  const [selectedDataset, setSelectedDataset] = useState<string>('');
+  const [stats, setStats] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [logs, setLogs] = useState<ZFSLog[]>([]);
+  const [snapshots, setSnapshots] = useState<any[]>([]);
+
+  const fetchData = async () => {
+    try {
+      const [poolsRes, snapshotRes] = await Promise.all([
+        api.getPools(),
+        api.getSnapshots()
+      ]);
+
+      const mappedPools: ZFSPool[] = (poolsRes.pools || []).map((p: any) => ({
+        name: p.name,
+        size: p.size,
+        alloc: p.alloc,
+        free: p.free,
+        cap: parseInt(p.cap),
+        health: p.health,
+        raidType: 'ZFS Pool',
+        vdevs: []
+      }));
+
+      setPools(mappedPools);
+
+      // Fetch Datasets
+      const datasetsRes = await api.getDatasets();
+      setDatasets(datasetsRes.datasets);
+      if (datasetsRes.datasets.length > 0 && !selectedDataset) {
+        setSelectedDataset(datasetsRes.datasets[0].name);
+      }
+      setSnapshots(snapshotRes.snapshots || []);
+      
+      if (mappedPools.length > 0) {
+        // Fetch I/O Stats
+        const iostatRes = await api.getPoolIoStat(poolsRes.pools[0].name);
+        if (iostatRes.iostat && iostatRes.iostat.length > 0) {
+          const statsRow = iostatRes.iostat[0];
+          // zpool iostat -H -p: name alloc free read write read_iops write_iops
+          const read = parseFloat(statsRow[3]) / 1024 / 1024; // MB/s
+          const write = parseFloat(statsRow[4]) / 1024 / 1024; // MB/s
+          const readIops = parseFloat(statsRow[5]);
+          const writeIops = parseFloat(statsRow[6]);
+          const time = new Date().toLocaleTimeString();
+          setStats(prev => {
+            const newStats = [...prev, { 
+              name: time, 
+              timestamp: time,
+              read, 
+              write,
+              iops: readIops + writeIops,
+              arcHit: Math.random() * 20 + 75, // Still mock until backend support
+              l2arcHit: Math.random() * 5 + 90,
+              latency: Math.random() * 2 + 0.5
+            }];
+            return newStats.slice(-30);
+          });
+        }
+      }
+
+      setLoading(false);
+    } catch (error: any) {
+      console.error('Failed to fetch data:', error);
+      const newLog: ZFSLog = {
+        id: Date.now().toString(),
+        timestamp: new Date().toLocaleString(),
+        level: 'error',
+        message: `API Error: ${error instanceof Error ? error.message : 'Unknown'}`
+      };
+      setLogs(prev => [newLog, ...prev.slice(0, 49)]);
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setStats(prev => {
-        const newStat = {
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          read: Math.floor(Math.random() * 500) + 100,
-          write: Math.floor(Math.random() * 300) + 50,
-          iops: Math.floor(Math.random() * 5000) + 1000,
-          latency: (Math.random() * 5 + 1).toFixed(2),
-          arcHit: Math.floor(Math.random() * 10) + 90,
-          l2arcHit: Math.floor(Math.random() * 20) + 70,
-        };
-        return [...prev.slice(1), newStat];
-      });
-    }, 3000);
+    fetchData();
+    const interval = setInterval(fetchData, 5000);
     return () => clearInterval(interval);
   }, []);
 
   const renderContent = () => {
     const currentStats = stats[stats.length - 1] || { read: 0, write: 0, iops: 0 };
+
+    const totalSize = pools.reduce((acc: number, p: ZFSPool) => {
+      return acc + (Number(p.size) || 0);
+    }, 0);
+
+    const totalUsed = pools.reduce((acc: number, p: ZFSPool) => {
+      return acc + (Number(p.alloc) || 0);
+    }, 0);
+
+    const formatSizeLong = (bytes: number) => {
+      return formatBytes(bytes, 1);
+    };
+
+    const formatSize = (mb: number) => {
+      if (mb > 1024) return `${(mb / 1024).toFixed(1)} TB`;
+      return `${mb.toFixed(1)} GB`;
+    };
 
     switch (activeTab) {
       case 'dashboard':
@@ -140,9 +153,9 @@ export default function App() {
             {/* Top Stats */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
               {[
-                { label: 'Total Capacity', value: '14.2 TB', icon: Database, color: 'text-blue-400', trend: '+2.4%', up: true },
-                { label: 'CPU Usage', value: '12.4%', icon: Cpu, color: 'text-emerald-400', trend: '-1.2%', up: false },
-                { label: 'System Health', value: 'Optimal', icon: ShieldCheck, color: 'text-indigo-400', trend: 'Stable', up: true },
+                { label: 'Total Capacity', value: formatSizeLong(totalSize), icon: Database, color: 'text-blue-400', trend: 'Live', up: true },
+                { label: 'Used Storage', value: formatSizeLong(totalUsed), icon: HardDrive, color: 'text-emerald-400', trend: `${totalSize > 0 ? ((totalUsed / totalSize) * 100).toFixed(1) : 0}%`, up: false },
+                { label: 'System Health', value: pools.every(p => p.health === 'ONLINE') ? 'Optimal' : 'Degraded', icon: ShieldCheck, color: 'text-indigo-400', trend: 'Stable', up: true },
                 { label: 'IOPS', value: `${(currentStats.iops / 1000).toFixed(1)}k`, icon: Zap, color: 'text-amber-400', trend: '+12%', up: true },
                 { label: 'Read Speed', value: `${currentStats.read} MB/s`, icon: ArrowDownRight, color: 'text-blue-500', trend: 'Live', up: true },
                 { label: 'Write Speed', value: `${currentStats.write} MB/s`, icon: ArrowUpRight, color: 'text-emerald-500', trend: 'Live', up: true },
@@ -219,7 +232,7 @@ export default function App() {
                   </button>
                 </div>
                 <div className="space-y-6">
-                  {mockPools.map((pool, i) => (
+                  {pools.map((pool, i) => (
                     <motion.div
                       key={pool.name}
                       initial={{ opacity: 0, x: 20 }}
@@ -234,7 +247,9 @@ export default function App() {
                           </div>
                           <div>
                             <p className="text-lg font-bold text-white">{pool.name}</p>
-                            <span className="status-badge status-online">Online</span>
+                            <span className={`status-badge ${pool.health === 'ONLINE' ? 'status-online' : 'status-offline'}`}>
+                              {pool.health}
+                            </span>
                           </div>
                         </div>
                         <button className="text-white/20 hover:text-white">
@@ -270,7 +285,7 @@ export default function App() {
                     </div>
                     <h4 className="font-bold text-white">Scrub Status</h4>
                   </div>
-                  <p className="text-sm text-white/60 mb-4">Last scrub finished 2 days ago. No data errors detected.</p>
+                  <p className="text-sm text-white/60 mb-4">Last scrub finished successfully. No data errors detected.</p>
                   <button className="w-full apple-button apple-button-primary !py-2 text-xs">
                     Start New Scrub
                   </button>
@@ -442,7 +457,7 @@ export default function App() {
               </button>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              {mockPools.map((pool) => (
+              {pools.map((pool) => (
               <div key={pool.name} className="glass-panel p-8">
                 <div className="flex justify-between items-center mb-8">
                   <div className="flex items-center gap-4">
@@ -454,7 +469,9 @@ export default function App() {
                       <p className="text-sm text-white/40">{pool.raidType} • {pool.size}</p>
                     </div>
                   </div>
-                  <span className="status-badge status-online">Online</span>
+                  <span className={`status-badge ${pool.health === 'ONLINE' ? 'status-online' : 'status-offline'}`}>
+                    {pool.health}
+                  </span>
                 </div>
                 
                 <div className="space-y-6">
@@ -475,7 +492,7 @@ export default function App() {
 
                   <div className="space-y-3">
                     <h4 className="text-xs font-bold text-white/40 uppercase tracking-widest">Topology</h4>
-                    {pool.vdevs.map(vdev => (
+                    {pool.vdevs.map((vdev: any) => (
                       <div key={vdev.id} className="bg-white/5 p-4 rounded-2xl flex justify-between items-center">
                         <div className="flex items-center gap-3">
                           <HardDrive size={16} className="text-white/40" />
@@ -492,7 +509,40 @@ export default function App() {
           </div>
         );
       case 'datasets':
-        return <DatasetList datasets={mockDatasets} />;
+        return (
+          <div className="space-y-8">
+            <DatasetList datasets={datasets} />
+            {volumes.length > 0 && (
+              <div className="glass-panel overflow-hidden mt-8">
+                <div className="p-8 border-b border-white/[0.05]">
+                  <h2 className="text-xl font-bold text-white tracking-tight">ZFS Volumes (zvols)</h2>
+                  <p className="text-xs text-white/40 mt-1">Block devices and virtual drives</p>
+                </div>
+                <div className="p-4">
+                  <div className="grid grid-cols-1 gap-3">
+                    {volumes.map((vol, i) => (
+                      <div key={vol.name} className="flex items-center justify-between p-6 bg-white/[0.02] rounded-2xl border border-white/[0.05]">
+                        <div className="flex items-center gap-6">
+                          <div className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center text-white/40">
+                            <Database size={20} />
+                          </div>
+                          <div>
+                            <p className="text-base font-bold text-white">{vol.name}</p>
+                            <p className="text-[10px] text-white/30 font-mono mt-0.5">Size: {vol.volsize}</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs font-bold text-white/80">Used: {vol.used}</p>
+                          <p className="text-[10px] text-white/40">Available: {vol.avail}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
       case 'snapshots':
         return (
           <div className="space-y-8">
@@ -505,24 +555,44 @@ export default function App() {
                 <Camera size={20} /> Create Snapshot
               </button>
             </div>
-            <div className="glass-panel p-12 text-center">
-              <Camera size={64} className="mx-auto text-zfs-accent mb-6 opacity-20" />
-              <h2 className="text-3xl font-bold mb-2">Snapshots</h2>
-              <p className="text-white/40 max-w-md mx-auto">Point-in-time recovery, snapshot scheduling, and recursive snapshot management.</p>
-              <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6 text-left">
-                {[1, 2, 3].map(i => (
-                  <div key={i} className="bg-white/5 p-6 rounded-2xl border border-white/5">
+            
+            {snapshots.length === 0 ? (
+              <div className="glass-panel p-12 text-center">
+                <Camera size={64} className="mx-auto text-zfs-accent mb-6 opacity-20" />
+                <h2 className="text-3xl font-bold mb-2">No Snapshots</h2>
+                <p className="text-white/40 max-w-md mx-auto">You haven't created any snapshots yet. Point-in-time recovery and snapshot scheduling will appear here.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {snapshots.map((snap, i) => (
+                  <motion.div 
+                    key={snap.name}
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: i * 0.05 }}
+                    className="glass-panel p-6 border border-white/5"
+                  >
                     <div className="flex justify-between items-center mb-4">
-                      <Camera size={20} className="text-zfs-accent" />
-                      <span className="text-[10px] font-bold text-white/20 uppercase tracking-widest">2h ago</span>
+                      <div className="p-2 rounded-lg bg-zfs-accent/10 text-zfs-accent">
+                        <Camera size={20} />
+                      </div>
+                      <span className="text-[10px] font-bold text-white/20 uppercase tracking-widest">{snap.creation || 'Recently'}</span>
                     </div>
-                    <p className="font-bold text-white">tank/data@hourly-{i}</p>
-                    <p className="text-xs text-white/40 mt-1">Size: 1.2 GB</p>
-                    <button className="mt-4 w-full apple-button apple-button-secondary !py-2 text-xs">Rollback</button>
-                  </div>
+                    <p className="font-bold text-white truncate" title={snap.name}>{snap.name}</p>
+                    <div className="mt-4 flex items-center justify-between text-xs">
+                      <span className="text-white/40">Used: {snap.used || '0 B'}</span>
+                      <span className="text-white/40">Ref: {snap.refer || '0 B'}</span>
+                    </div>
+                    <div className="mt-6 flex gap-2">
+                      <button className="flex-1 apple-button apple-button-secondary !py-2 text-xs">Rollback</button>
+                      <button className="w-10 h-10 flex items-center justify-center rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all">
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </motion.div>
                 ))}
               </div>
-            </div>
+            )}
           </div>
         );
       case 'replication':
@@ -587,72 +657,64 @@ export default function App() {
                   <button className="mt-8 w-full apple-button apple-button-primary">Start Scrub</button>
                 </div>
                 <div className="bg-white/5 p-8 rounded-3xl border border-white/5">
-                  <h4 className="text-lg font-bold mb-6">Disk Health</h4>
+                  <h4 className="text-lg font-bold mb-6">Pool Devices</h4>
                   <div className="space-y-4">
-                    {['sda', 'sdb', 'sdc', 'sdd'].map(disk => (
-                      <div key={disk} className="flex justify-between items-center p-3 bg-white/5 rounded-xl">
-                        <div className="flex items-center gap-3">
-                          <HardDrive size={16} className="text-white/40" />
-                          <span className="text-sm font-medium">{disk}</span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-[10px] font-bold text-emerald-400 uppercase">Online</span>
-                          <button className="p-1.5 bg-white/5 hover:bg-white/10 rounded-lg transition-all text-white/40 hover:text-white">
-                            <Activity size={14} />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                    {pools.length > 0 ? (
+                      pools[0].vdevs && pools[0].vdevs.length > 0 ? (
+                        pools[0].vdevs.map((vdev: any) => (
+                          <div key={vdev.name} className="flex justify-between items-center p-3 bg-white/5 rounded-xl">
+                            <div className="flex items-center gap-3">
+                              <HardDrive size={16} className="text-white/40" />
+                              <span className="text-sm font-medium">{vdev.name}</span>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className="text-[10px] font-bold text-emerald-400 uppercase">Online</span>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="text-center py-4 text-white/20 text-xs">No vdev information available</div>
+                      )
+                    ) : (
+                      <div className="text-center py-4 text-white/20 text-xs">No pools configured</div>
+                    )}
                   </div>
                 </div>
               </div>
             </div>
 
-            <div className="glass-panel p-8">
-              <h3 className="text-xl font-bold text-white mb-8">SMART Diagnostics</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                {mockSmartData.map((smart, i) => (
-                  <div key={smart.device} className="bg-white/5 p-6 rounded-2xl border border-white/5">
-                    <div className="flex justify-between items-start mb-4">
-                      <div className="p-2 bg-white/5 rounded-lg text-zfs-accent">
-                        <HardDrive size={20} />
-                      </div>
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${smart.status === 'PASSED' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
-                        {smart.status}
-                      </span>
-                    </div>
-                    <p className="font-bold text-white">{smart.device}</p>
-                    <p className="text-[10px] text-white/40 mb-4">{smart.model}</p>
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-[10px]">
-                        <span className="text-white/20 uppercase tracking-widest">Temp</span>
-                        <span className="text-white flex items-center gap-1"><Thermometer size={10} /> {smart.temperature}°C</span>
-                      </div>
-                      <div className="flex justify-between text-[10px]">
-                        <span className="text-white/20 uppercase tracking-widest">Power On</span>
-                        <span className="text-white flex items-center gap-1"><Clock size={10} /> {smart.powerOnHours}h</span>
-                      </div>
-                      <div className="flex justify-between text-[10px]">
-                        <span className="text-white/20 uppercase tracking-widest">Errors</span>
-                        <span className={`flex items-center gap-1 ${smart.reallocatedSectors === 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                          <CheckCircle2 size={10} /> {smart.reallocatedSectors}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+            <div className="glass-panel p-8 text-center bg-amber-500/5 border-amber-500/10">
+              <AlertTriangle size={32} className="mx-auto text-amber-500/40 mb-4" />
+              <h3 className="text-lg font-bold text-white mb-2">SMART Diagnostics</h3>
+              <p className="text-sm text-white/40 max-w-sm mx-auto">SMART monitoring is currently unavailable as it requires elevated permissions on the host system.</p>
             </div>
           </div>
         );
-      case 'permissions':
-        return <ACLManager />;
+      case 'properties':
+        return (
+          <div className="space-y-8">
+            <div className="flex gap-4 p-2 bg-white/5 rounded-2xl w-fit">
+              {datasets.slice(0, 5).map(ds => (
+                <button 
+                  key={ds.name}
+                  onClick={() => setSelectedDataset(ds.name)}
+                  className={`px-6 py-2 rounded-xl text-xs font-bold transition-all ${
+                    selectedDataset === ds.name ? 'bg-zfs-accent text-white shadow-lg' : 'text-white/40 hover:text-white'
+                  }`}
+                >
+                  {ds.name.split('/').pop()}
+                </button>
+              ))}
+            </div>
+            <PropertiesManager dataset={selectedDataset || datasets[0]?.name} />
+          </div>
+        );
       case 'settings':
         return (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="glass-panel p-8">
               <h3 className="text-xl font-bold text-white mb-8 flex items-center gap-3">
-                <SettingsIcon size={24} className="text-zfs-accent" />
+                <Settings size={24} className="text-zfs-accent" />
                 System Settings
               </h3>
               <div className="space-y-6">
@@ -660,15 +722,18 @@ export default function App() {
                   { label: 'Hostname', value: 'nexus-zfs-node-01', icon: Server },
                   { label: 'SSH Access', value: 'Enabled (Port 22)', icon: Terminal },
                   { label: 'Root Password', value: '••••••••••••', icon: Key },
-                ].map((item, i) => (
-                  <div key={i} className="flex justify-between items-center p-4 bg-white/5 rounded-2xl">
-                    <div className="flex items-center gap-4">
-                      <div className="text-white/40"><item.icon size={18} /></div>
-                      <span className="text-sm font-medium">{item.label}</span>
+                ].map((item, i) => {
+                  const Icon = item.icon;
+                  return (
+                    <div key={i} className="flex justify-between items-center p-4 bg-white/5 rounded-2xl">
+                      <div className="flex items-center gap-4">
+                        <div className="text-white/40"><Icon size={18} /></div>
+                        <span className="text-sm font-medium">{item.label}</span>
+                      </div>
+                      <span className="text-sm font-bold text-white/60">{item.value}</span>
                     </div>
-                    <span className="text-sm font-bold text-white/60">{item.value}</span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
               <button className="mt-8 w-full apple-button apple-button-primary">Save Changes</button>
             </div>
@@ -713,7 +778,7 @@ export default function App() {
                 </div>
               </div>
               <div className="space-y-3">
-                {mockLogs.map((log, i) => (
+                {logs.map((log, i) => (
                   <motion.div 
                     key={log.id}
                     initial={{ opacity: 0, x: -10 }}
@@ -739,6 +804,11 @@ export default function App() {
                     </div>
                   </motion.div>
                 ))}
+                {logs.length === 0 && (
+                  <div className="py-20 text-center text-white/20 font-bold uppercase tracking-widest">
+                    No logs recorded
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -752,7 +822,22 @@ export default function App() {
     <div className="flex min-h-screen bg-zfs-deep">
       <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
       
-      <main className="flex-1 ml-72 p-12 overflow-y-auto h-screen no-scrollbar">
+      <main className="flex-1 ml-72 p-12 overflow-y-auto h-screen no-scrollbar relative">
+        <AnimatePresence>
+          {loading && (
+            <motion.div 
+              initial={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 z-50 bg-zfs-deep/80 backdrop-blur-xl flex items-center justify-center"
+            >
+              <div className="flex flex-col items-center gap-6">
+                <div className="w-16 h-16 border-4 border-zfs-accent/20 border-t-zfs-accent rounded-full animate-spin" />
+                <p className="text-xs font-bold text-white/40 uppercase tracking-[0.3em] animate-pulse">Initializing Nexus API...</p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Header */}
         <header className="flex justify-between items-center mb-12">
           <div className="flex items-center gap-6 bg-white/[0.03] border border-white/[0.05] rounded-2xl px-6 py-3 w-96 focus-within:bg-white/[0.05] focus-within:border-zfs-accent/50 transition-all">

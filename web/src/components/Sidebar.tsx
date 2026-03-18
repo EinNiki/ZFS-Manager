@@ -21,15 +21,13 @@ interface SidebarProps {
 
 const menuItems = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'stats', label: 'Stats', icon: Activity },
+  { id: 'stats', label: 'Performance', icon: Activity },
   { id: 'pools', label: 'Storage Pools', icon: Database },
-  { id: 'datasets', label: 'Datasets', icon: Layers },
-  { id: 'permissions', label: 'Permissions', icon: ShieldCheck },
+  { id: 'datasets', label: 'Datasets & Volumes', icon: Layers },
+  { id: 'properties', label: 'Properties', icon: Settings },
   { id: 'snapshots', label: 'Snapshots', icon: Camera },
-  { id: 'replication', label: 'Replication', icon: RefreshCw },
-  { id: 'scrub', label: 'Scrub & Health', icon: ShieldCheck },
-  { id: 'logs', label: 'Logs', icon: FileText },
-  { id: 'settings', label: 'Settings', icon: Settings },
+  { id: 'logs', label: 'System Logs', icon: FileText },
+  { id: 'settings', label: 'App Settings', icon: Settings },
 ];
 
 export default function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
