@@ -206,6 +206,7 @@ export default function App() {
                   totalCapacity={totalCapacity} 
                   totalUsedStorage={totalUsedStorage} 
                   currentStats={stats[stats.length - 1] || { read: 0, write: 0, iops: 0, cpu: 0, arcHit: 0 }}
+                  systemStats={systemStats}
                   formatSizeLong={(b) => formatBytes(b, 2)}
                 />
               } />
