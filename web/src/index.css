@@ -33,7 +33,7 @@
   }
 
   .apple-button {
-    @apply px-5 py-2.5 rounded-xl font-bold text-[12px] transition-all active:scale-95 flex items-center justify-center gap-2;
+    @apply h-10 px-5 rounded-xl font-bold text-[12px] transition-all active:scale-95 flex items-center justify-center gap-2;
   }
 
   .apple-button-primary {
@@ -68,5 +68,9 @@
   .no-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;
+  }
+
+  .recharts-wrapper, .recharts-surface {
+    outline: none !important;
   }
 }

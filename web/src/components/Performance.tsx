@@ -95,7 +95,7 @@ export default function Performance({ stats }: PerformanceProps) {
                   contentStyle={{ backgroundColor: 'rgba(2, 6, 23, 0.8)', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '16px' }}
                   itemStyle={{ fontWeight: 800, fontSize: '12px' }}
                   labelStyle={{ color: 'opacity-40', fontWeight: 800, fontSize: '10px' }}
-                  formatter={(value: number) => [value.toLocaleString(), "IOPS"]}
+                  formatter={(value: number) => [`${value.toFixed(2)}`, "IOPS"]}
                 />
                 <Area type="monotone" dataKey="iops" stroke="#F59E0B" fillOpacity={1} fill="url(#colorIops)" strokeWidth={3} animationDuration={1000} />
               </AreaChart>
@@ -139,6 +139,7 @@ export default function Performance({ stats }: PerformanceProps) {
                 <YAxis axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.2)', fontSize: 10, fontWeight: 700 }} />
                 <Tooltip 
                   contentStyle={{ backgroundColor: 'rgba(2, 6, 23, 0.8)', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '16px' }}
+                  formatter={(value: number) => [`${value.toFixed(2)}%`, ""]}
                 />
                 <Area type="monotone" dataKey="cpu" stroke="#6366F1" fillOpacity={1} fill="url(#colorCpu)" strokeWidth={3} animationDuration={1000} />
                 <Area type="monotone" dataKey="arcHit" stroke="#10B981" fillOpacity={1} fill="url(#colorArc)" strokeWidth={3} animationDuration={1000} />
@@ -183,6 +184,7 @@ export default function Performance({ stats }: PerformanceProps) {
                 <YAxis axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.2)', fontSize: 10, fontWeight: 700 }} />
                 <Tooltip 
                   contentStyle={{ backgroundColor: 'rgba(2, 6, 23, 0.8)', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '16px' }}
+                  formatter={(value: number) => [`${value.toFixed(2)} GB`, ""]}
                 />
                 <Area type="monotone" dataKey="alloc" stroke="#F43F5E" fillOpacity={1} fill="url(#colorUsed)" strokeWidth={3} animationDuration={1000} />
                 <Area type="monotone" dataKey="free" stroke="#22D3EE" fillOpacity={1} fill="url(#colorFree)" strokeWidth={3} animationDuration={1000} />

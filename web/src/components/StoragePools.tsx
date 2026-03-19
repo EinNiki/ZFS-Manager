@@ -16,13 +16,13 @@ export default function StoragePools({ pools }: StoragePoolsProps) {
           <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mt-1">Resource cluster telemetry</p>
         </div>
         <div className="flex items-center gap-3">
-          <button className="apple-button apple-button-secondary !py-2.5 !px-5 group">
+          <button className="apple-button apple-button-secondary group">
             <RefreshCw size={14} className="group-hover:rotate-180 transition-transform duration-500" />
             <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Scan</span>
           </button>
-          <button className="apple-button apple-button-primary !py-2.5 !px-5">
+          <button className="apple-button apple-button-primary">
             <Plus size={14} strokeWidth={3} />
-            <span className="text-[10px] font-black uppercase tracking-widest">Provision</span>
+            <span className="text-[10px] font-black uppercase tracking-widest">Add Volume</span>
           </button>
         </div>
       </div>
@@ -66,7 +66,7 @@ export default function StoragePools({ pools }: StoragePoolsProps) {
                   <span className="text-[9px] font-black text-slate-700 uppercase tracking-widest">Cluster Utilization</span>
                   <span className="text-[11px] font-black text-white">{pool.cap}%</span>
                 </div>
-                <div className="h-1.5 bg-white/[0.02] rounded-full overflow-hidden border border-white/[0.02]">
+                <div className="h-2 bg-white/[0.02] rounded-full overflow-hidden border border-white/[0.02]">
                   <motion.div 
                     initial={{ width: 0 }}
                     animate={{ width: `${pool.cap}%` }}
@@ -88,13 +88,13 @@ export default function StoragePools({ pools }: StoragePoolsProps) {
             </div>
 
             <div className="flex flex-wrap gap-3 relative">
-              <button className="apple-button apple-button-secondary !px-4 !py-2.5">
+              <button className="apple-button apple-button-secondary !px-4">
                 <span className="text-[9px] font-black uppercase tracking-widest text-slate-500 group-hover:text-white transition-colors">Topology</span>
               </button>
-              <button className="apple-button apple-button-secondary !px-4 !py-2.5 text-rose-500/60 hover:text-rose-400 hover:bg-rose-500/5 transition-colors">
+              <button className="apple-button apple-button-secondary !px-4 text-rose-500/60 hover:text-rose-400 hover:bg-rose-500/5 transition-colors">
                 <span className="text-[9px] font-black uppercase tracking-widest">Offline</span>
               </button>
-              <button className="ml-auto apple-button apple-button-primary !px-5 !py-2.5">
+              <button className="ml-auto apple-button apple-button-primary !px-5">
                 <span className="text-[9px] font-black uppercase tracking-widest">Initiate Scrub</span>
               </button>
             </div>

@@ -5,14 +5,12 @@ import {
   HardDrive, 
   ShieldCheck, 
   Zap, 
-  ArrowDownRight, 
-  ArrowUpRight,
-  TrendingUp,
   Activity,
   Server,
-  Cpu
+  Cpu,
+  Clock
 } from 'lucide-react';
-import { ZFSPool, ZFSLog } from '../types';
+import { ZFSPool } from '../types';
 
 interface DashboardProps {
   pools: ZFSPool[];
@@ -39,7 +37,7 @@ export default function Dashboard({
   const uptime = systemStats?.uptime ?? 'N/A';
   
   return (
-    <div className="space-y-8 max-w-[1400px] mx-auto pb-10">
+    <div className="space-y-8 max-w-[1400px] mx-auto pb-10 no-scrollbar">
       {/* Refined Header Section */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 px-4">
         <motion.div
@@ -52,27 +50,31 @@ export default function Dashboard({
         </motion.div>
         
         <div className="flex items-center gap-3">
-          <div className="glass-panel px-4 py-2 flex items-center gap-3 border-white/[0.03]">
+          <div className="glass-panel px-4 h-10 flex items-center gap-3 border-white/[0.03]">
              <Activity size={16} className="text-zfs-accent" />
-             <span className="text-[11px] font-black text-white/60 tracking-tight uppercase">{uptime.split(',')[0]}</span>
+             <span className="text-[11px] font-black text-white/60 tracking-tight uppercase">UPTIME: {uptime.split(',')[0]}</span>
+          </div>
+          <div className="glass-panel px-4 h-10 flex items-center gap-3 border-white/[0.03]">
+             <Server size={16} className="text-indigo-400" />
+             <span className="text-[11px] font-black text-white/60 tracking-tight uppercase">NODE: ONLINE</span>
           </div>
         </div>
       </div>
 
       {/* Tighter Metric Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 px-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 px-4 overflow-hidden">
         {[
           { label: 'Aggregate Capacity', value: formatSizeLong(totalCapacity), icon: Database, color: 'text-zfs-accent', bg: 'bg-zfs-accent/5' },
           { label: 'Utilized Space', value: formatSizeLong(totalUsedStorage), icon: HardDrive, color: 'text-indigo-400', bg: 'bg-indigo-400/5' },
-          { label: 'Node Integrity', value: pools.length > 0 && pools.every(p => p.health === 'ONLINE') ? 'Healthy' : 'Check', icon: ShieldCheck, color: 'text-emerald-400', bg: 'bg-emerald-400/5' },
-          { label: 'Real-time Flow', value: `${(currentStats.read + currentStats.write).toFixed(1)} Mb/s`, icon: Zap, color: 'text-amber-400', bg: 'bg-amber-400/5' },
+          { label: 'ARC Efficiency', value: `${arcHit.toFixed(2)}%`, icon: Zap, color: 'text-emerald-400', bg: 'bg-emerald-400/5' },
+          { label: 'Node Integrity', value: pools.length > 0 && pools.every(p => p.health === 'ONLINE') ? 'Healthy' : 'Check', icon: ShieldCheck, color: 'text-amber-400', bg: 'bg-amber-400/5' },
         ].map((stat, i) => (
           <motion.div
             key={i}
-            initial={{ opacity: 0, y: 15 }}
+            initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.05 }}
-            className="glass-panel p-6 flex items-center gap-5 hover:bg-white/[0.01] transition-all border-white/[0.02]"
+            transition={{ type: "spring", damping: 25, stiffness: 100, delay: i * 0.1 }}
+            className="glass-panel p-5 flex items-center gap-5 hover:bg-white/[0.01] transition-all border-white/[0.02]"
           >
             <div className={`p-3 rounded-xl ${stat.bg} ${stat.color} border border-white/[0.03]`}>
               <stat.icon size={20} strokeWidth={2.5} />
@@ -165,7 +167,7 @@ export default function Dashboard({
             ))}
           </div>
 
-          <button className="w-full mt-8 apple-button apple-button-secondary !py-3">
+          <button className="w-full mt-8 apple-button apple-button-secondary h-10">
             <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 hover:text-white transition-colors">Manage Full Cluster</span>
           </button>
         </div>
