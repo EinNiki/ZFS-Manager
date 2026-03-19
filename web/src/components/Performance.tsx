@@ -1,6 +1,6 @@
 import React from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Cpu, ShieldCheck } from 'lucide-react';
+import { Cpu, ShieldCheck, Activity } from 'lucide-react';
 
 interface PerformanceProps {
   stats: any[];
@@ -8,10 +8,20 @@ interface PerformanceProps {
 
 export default function Performance({ stats }: PerformanceProps) {
   return (
-    <div className="space-y-10 pb-10 max-w-[1600px] mx-auto">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+    <div className="space-y-10 pb-10 max-w-[1600px] mx-auto no-scrollbar">
+      {stats.length === 0 && (
+        <div className="glass-panel p-10 flex flex-col items-center justify-center text-center mx-4">
+          <div className="w-12 h-12 bg-white/[0.02] rounded-xl flex items-center justify-center text-slate-700 mb-4 border border-white/[0.05]">
+            <Activity size={24} />
+          </div>
+          <h3 className="text-lg font-black text-white mb-1">Telemetry Pending</h3>
+          <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">Awaiting real-time stream from node hardware...</p>
+        </div>
+      )}
+      
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 px-4">
         {/* Throughput */}
-        <div className="glass-panel p-8">
+        <div className="glass-panel p-5">
           <div className="flex justify-between items-center mb-8">
             <div>
               <h3 className="text-xl font-black text-white tracking-tight">Throughput</h3>
@@ -28,9 +38,9 @@ export default function Performance({ stats }: PerformanceProps) {
               </div>
             </div>
           </div>
-          <div className="h-[320px] w-full">
+          <div className="h-[240px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={stats}>
+              <AreaChart data={stats} style={{ outline: 'none' }}>
                 <defs>
                   <linearGradient id="colorRead" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#22D3EE" stopOpacity={0.2}/>
@@ -58,7 +68,7 @@ export default function Performance({ stats }: PerformanceProps) {
         </div>
 
         {/* IOPS */}
-        <div className="glass-panel p-8">
+        <div className="glass-panel p-5">
           <div className="flex justify-between items-center mb-8">
             <div>
               <h3 className="text-xl font-black text-white tracking-tight">IOPS</h3>
@@ -69,9 +79,9 @@ export default function Performance({ stats }: PerformanceProps) {
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Ops</span>
             </div>
           </div>
-          <div className="h-[320px] w-full">
+          <div className="h-[240px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={stats}>
+              <AreaChart data={stats} style={{ outline: 'none' }}>
                 <defs>
                   <linearGradient id="colorIops" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#F59E0B" stopOpacity={0.2}/>
@@ -94,7 +104,7 @@ export default function Performance({ stats }: PerformanceProps) {
         </div>
 
         {/* CPU & System */}
-        <div className="glass-panel p-8">
+        <div className="glass-panel p-5">
           <div className="flex justify-between items-center mb-8">
             <div>
               <h3 className="text-xl font-black text-white tracking-tight">System Resources</h3>
@@ -111,9 +121,9 @@ export default function Performance({ stats }: PerformanceProps) {
               </div>
             </div>
           </div>
-          <div className="h-[320px] w-full">
+          <div className="h-[240px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={stats}>
+              <AreaChart data={stats} style={{ outline: 'none' }}>
                 <defs>
                   <linearGradient id="colorCpu" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#6366F1" stopOpacity={0.2}/>
@@ -138,7 +148,7 @@ export default function Performance({ stats }: PerformanceProps) {
         </div>
 
         {/* Space Utilization */}
-        <div className="glass-panel p-8">
+        <div className="glass-panel p-5">
           <div className="flex justify-between items-center mb-8">
             <div>
               <h3 className="text-xl font-black text-white tracking-tight">Storage Trends</h3>
@@ -155,9 +165,9 @@ export default function Performance({ stats }: PerformanceProps) {
               </div>
             </div>
           </div>
-          <div className="h-[320px] w-full">
+          <div className="h-[240px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={stats}>
+              <AreaChart data={stats} style={{ outline: 'none' }}>
                 <defs>
                   <linearGradient id="colorUsed" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#F43F5E" stopOpacity={0.2}/>

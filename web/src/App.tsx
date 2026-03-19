@@ -153,9 +153,13 @@ export default function App() {
     <BrowserRouter>
       <div className="flex h-screen bg-[#070B14] text-white selection:bg-zfs-accent/30 overflow-hidden">
         {/* Desktop Sidebar */}
-        <div className="hidden lg:block h-full">
+        <motion.div 
+          layout
+          transition={{ type: "spring", stiffness: 300, damping: 30 }}
+          className="hidden lg:block h-full overflow-hidden"
+        >
           <Sidebar />
-        </div>
+        </motion.div>
 
         {/* Mobile Sidebar Overlay */}
         <AnimatePresence>
@@ -197,7 +201,7 @@ export default function App() {
             </button>
           </header>
 
-          <div className="flex-1 overflow-y-auto p-6 md:p-10 custom-scrollbar">
+          <div className="flex-1 overflow-y-auto p-6 md:p-10 no-scrollbar">
             <Routes>
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
               <Route path="/dashboard" element={

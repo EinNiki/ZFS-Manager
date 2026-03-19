@@ -13,7 +13,7 @@ export default function DatasetList({ datasets }: DatasetListProps) {
   return (
     <div className="max-w-[1300px] mx-auto pb-10">
       <div className="glass-panel overflow-hidden border-white/[0.02]">
-        <div className="p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-white/[0.03] bg-white/[0.01]">
+        <div className="p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-white/[0.03] bg-white/[0.01]">
           <div>
             <h2 className="text-2xl font-black text-white tracking-tight">Storage Volumes</h2>
             <p className="text-[10px] font-black text-slate-600 uppercase tracking-widest mt-1">Dataset hierarchy & allocation</p>
@@ -32,7 +32,7 @@ export default function DatasetList({ datasets }: DatasetListProps) {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.03 }}
-                className="flex flex-col lg:flex-row lg:items-center justify-between p-5 bg-white/[0.01] rounded-2xl hover:bg-white/[0.03] transition-all group border border-white/[0.02] hover:border-white/[0.06]"
+                className="flex flex-col lg:flex-row lg:items-center justify-between p-4 bg-white/[0.01] rounded-2xl hover:bg-white/[0.03] transition-all group border border-white/[0.02] hover:border-white/[0.06]"
               >
                 <div className="flex items-center gap-5 mb-4 lg:mb-0">
                   <div className="w-12 h-12 bg-white/[0.02] border border-white/[0.04] rounded-xl flex items-center justify-center text-slate-600 group-hover:text-zfs-accent transition-all">
@@ -40,14 +40,14 @@ export default function DatasetList({ datasets }: DatasetListProps) {
                   </div>
                   <div className="min-w-0">
                     <div className="flex items-center gap-3">
-                      <p className="text-lg font-black text-white leading-none tracking-tight group-hover:text-zfs-accent transition-colors truncate">{ds.name.split('/').pop()}</p>
+                      <p className="text-base font-black text-white leading-none tracking-tight group-hover:text-zfs-accent transition-colors truncate">{ds.name.split('/').pop()}</p>
                       {ds.readonly && (
                         <div className="p-1 rounded bg-amber-500/10 text-amber-500 border border-amber-500/20">
                           <Lock size={10} strokeWidth={3} />
                         </div>
                       )}
                     </div>
-                    <p className="text-[9px] text-slate-600 font-black uppercase tracking-[0.2em] mt-1.5 truncate">{ds.name}</p>
+                    <p className="text-[8px] text-slate-600 font-black uppercase tracking-[0.2em] mt-1.5 truncate">{ds.name}</p>
                   </div>
                 </div>
                 

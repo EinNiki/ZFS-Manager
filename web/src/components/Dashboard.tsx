@@ -42,19 +42,14 @@ export default function Dashboard({
     <div className="space-y-8 max-w-[1400px] mx-auto pb-10">
       {/* Refined Header Section */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 px-4">
-        <div>
-          <motion.div 
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex items-center gap-2 mb-2"
-          >
-            <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-600">Infrastructure Online</span>
-          </motion.div>
+        <motion.div
+           initial={{ opacity: 0, x: -20 }}
+           animate={{ opacity: 1, x: 0 }}
+        >
           <h2 className="text-4xl font-black text-white tracking-tighter leading-none">
             Storage <span className="text-slate-500">Analytics</span>
           </h2>
-        </div>
+        </motion.div>
         
         <div className="flex items-center gap-3">
           <div className="glass-panel px-4 py-2 flex items-center gap-3 border-white/[0.03]">

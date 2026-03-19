@@ -34,17 +34,17 @@ export default function StoragePools({ pools }: StoragePoolsProps) {
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: idx * 0.05 }}
-            className="glass-panel p-8 group relative overflow-hidden flex flex-col items-stretch"
+            className="glass-panel p-6 group relative overflow-hidden flex flex-col items-stretch"
           >
             <div className="absolute top-0 right-0 w-64 h-64 bg-zfs-accent/5 blur-[80px] rounded-full -mr-16 -mt-16 pointer-events-none transition-colors" />
             
             <div className="flex justify-between items-start mb-8 relative">
               <div className="flex items-center gap-5">
-                <div className="w-14 h-14 bg-white/[0.02] border border-white/[0.04] rounded-2xl flex items-center justify-center text-zfs-accent group-hover:scale-105 transition-transform">
-                  <Database size={24} strokeWidth={2.5} />
+                <div className="w-12 h-12 bg-white/[0.02] border border-white/[0.04] rounded-2xl flex items-center justify-center text-zfs-accent group-hover:scale-105 transition-transform">
+                  <Database size={20} strokeWidth={2.5} />
                 </div>
                 <div>
-                  <h3 className="text-xl font-black text-white mb-1 leading-none tracking-tight">{pool.name}</h3>
+                  <h3 className="text-lg font-black text-white mb-1 leading-none tracking-tight">{pool.name}</h3>
                   <div className="flex items-center gap-3">
                     <span className="text-[9px] font-black text-slate-600 uppercase tracking-[0.2em]">{pool.raidType}</span>
                     <span className={`status-badge !px-2 !py-0.5 !rounded-md ${
@@ -82,7 +82,7 @@ export default function StoragePools({ pools }: StoragePoolsProps) {
               ].map((stat, i) => (
                 <div key={i} className="flex flex-col gap-1">
                   <span className="text-[9px] font-black text-slate-700 uppercase tracking-widest truncate">{stat.label}</span>
-                  <span className="text-xl font-black text-white tracking-tight">{stat.value}</span>
+                  <span className="text-lg font-black text-white tracking-tight">{stat.value}</span>
                 </div>
               ))}
             </div>

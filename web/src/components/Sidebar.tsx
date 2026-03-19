@@ -42,21 +42,28 @@ export default function Sidebar({ onClose }: SidebarProps) {
   return (
     <div className={`h-screen transition-all duration-500 ease-[cubic-bezier(0.2,0,0,1)] z-50 ${isCollapsed ? 'w-20' : 'w-64'}`}>
       <div className="h-full glass-panel !rounded-none !border-y-0 !border-l-0 flex flex-col bg-[#07090E]/60 backdrop-blur-3xl border-r border-white/[0.04]">
-        {/* Brand Section */}
-        <div className="p-6 pb-4 flex items-center gap-3">
-          <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-br from-zfs-accent to-zfs-secondary rounded-xl flex items-center justify-center shadow-lg shadow-zfs-accent/10">
-            <HardDrive className="text-white" size={20} strokeWidth={2.5} />
+        <div className="p-6 pb-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-br from-zfs-accent to-zfs-secondary rounded-xl flex items-center justify-center shadow-lg shadow-zfs-accent/10">
+              <HardDrive className="text-white" size={20} strokeWidth={2.5} />
+            </div>
+            {!isCollapsed && (
+              <motion.div 
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="flex flex-col"
+              >
+                <h1 className="text-[15px] font-black tracking-tighter text-white leading-none">ZFS <span className="text-zfs-accent">Manager</span></h1>
+                <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-600 mt-1">Community Edition</span>
+              </motion.div>
+            )}
           </div>
-          {!isCollapsed && (
-            <motion.div 
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              className="flex flex-col"
-            >
-              <h1 className="text-[15px] font-black tracking-tighter text-white leading-none">ZFS <span className="text-zfs-accent">Manager</span></h1>
-              <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-600 mt-1">Enterprise Link</span>
-            </motion.div>
-          )}
+          <button 
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            className="w-8 h-8 flex items-center justify-center text-slate-500 hover:text-zfs-accent transition-colors bg-white/[0.03] rounded-lg border border-white/[0.05]"
+          >
+            {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+          </button>
         </div>
 
         {/* Navigation */}
@@ -104,13 +111,6 @@ export default function Sidebar({ onClose }: SidebarProps) {
         </div>
       </div>
 
-      {/* Collapse Toggle */}
-      <button 
-        onClick={() => setIsCollapsed(!isCollapsed)}
-        className="absolute -right-3 top-8 w-6 h-6 bg-slate-900 border border-white/10 rounded-full flex items-center justify-center text-slate-400 hover:text-white hover:border-zfs-accent/50 transition-all shadow-xl z-50 group"
-      >
-        <ChevronLeft size={14} className={`transition-transform duration-500 ${isCollapsed ? 'rotate-180' : ''}`} />
-      </button>
     </div>
   );
 }
