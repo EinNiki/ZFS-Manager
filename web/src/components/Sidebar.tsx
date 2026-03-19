@@ -56,12 +56,12 @@ export default function Sidebar({ onClose }: SidebarProps) {
       {/* Collapse Toggle (Desktop Only) */}
       <button 
         onClick={() => setIsCollapsed(!isCollapsed)}
-        className="hidden lg:flex absolute top-6 -right-3 w-6 h-6 bg-zfs-accent rounded-full items-center justify-center text-white border-2 border-[#0C1327] hover:scale-110 transition-transform z-50 shadow-lg"
+        className="hidden lg:flex absolute top-6 -right-2 w-6 h-6 bg-zfs-accent rounded-full items-center justify-center text-white border-2 border-[#0C1327] hover:scale-110 transition-transform shadow-lg"
       >
         {isCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
       </button>
 
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-y-auto no-scrollbar">
         <div className={`flex items-center gap-4 ${isCollapsed ? 'px-2' : 'px-4'} mb-12`}>
           <div className="flex-shrink-0 w-10 h-10 bg-zfs-accent rounded-xl flex items-center justify-center shadow-[0_0_20px_rgba(59,130,246,0.5)]">
             <HardDrive className="text-white" size={24} />
