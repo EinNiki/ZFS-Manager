@@ -9,81 +9,84 @@ interface SystemLogsProps {
 
 export default function SystemLogs({ logs }: SystemLogsProps) {
   return (
-    <div className="space-y-8">
-      <div className="flex justify-between items-center">
+    <div className="space-y-10 max-w-[1700px] mx-auto pb-10">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-8 px-4">
         <div>
-          <h2 className="text-2xl font-bold text-white">System Logs</h2>
-          <p className="text-white/40 text-sm">Real-time system events and operation history</p>
+          <h2 className="text-4xl font-black text-white tracking-tight">System Telemetry</h2>
+          <p className="text-slate-500 font-medium mt-1">Real-time infrastructure events and operation audit</p>
         </div>
-        <div className="flex gap-4">
-          <div className="relative group">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 group-focus-within:text-zfs-accent transition-colors" size={18} />
+        <div className="flex items-center gap-4">
+          <div className="relative group w-72">
+            <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-zfs-accent transition-colors" size={18} />
             <input 
               type="text" 
-              placeholder="Search logs..." 
-              className="bg-white/5 border border-white/10 rounded-xl pl-12 pr-4 py-2.5 text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-zfs-accent/50 w-64 transition-all" 
+              placeholder="Search telemetry..." 
+              className="bg-white/[0.03] border border-white/[0.05] rounded-2xl pl-12 pr-6 py-4 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-zfs-accent/20 focus:border-zfs-accent/30 w-full transition-all group-hover:bg-white/[0.05]" 
             />
           </div>
-          <button className="apple-button apple-button-secondary flex items-center gap-2">
-            <Download size={16} />
-            <span>Export CSV</span>
+          <button className="apple-button apple-button-secondary !py-4 !px-6 flex items-center gap-3">
+            <Download size={18} />
+            <span className="text-[11px] font-black uppercase tracking-widest text-slate-300">Export Archive</span>
           </button>
-          <button className="apple-button apple-button-secondary !text-rose-400 hover:bg-rose-500/10 flex items-center gap-2">
-            <Trash2 size={16} />
-            <span>Clear Logs</span>
+          <button className="apple-button apple-button-secondary !py-4 !px-6 !text-rose-500 hover:bg-rose-500/5 hover:border-rose-500/10 flex items-center gap-3">
+            <Trash2 size={18} />
+            <span className="text-[11px] font-black uppercase tracking-widest">Wipe Buffer</span>
           </button>
         </div>
       </div>
 
-      <div className="glass-panel overflow-hidden">
-        <div className="max-h-[600px] overflow-y-auto divide-y divide-white/[0.05]">
+      <div className="glass-panel overflow-hidden border-white/[0.03] mx-4 bg-gradient-to-b from-white/[0.01] to-transparent">
+        <div className="max-h-[700px] overflow-y-auto divide-y divide-white/[0.02] no-scrollbar scroll-smooth">
           {logs.map((log, idx) => (
             <motion.div 
               key={log.id || idx}
-              initial={{ opacity: 0, x: -10 }}
+              initial={{ opacity: 0, x: -15 }}
               animate={{ opacity: 1, x: 0 }}
-              className="p-6 hover:bg-white/[0.02] transition-colors flex items-start gap-6 group"
+              transition={{ delay: idx * 0.02 }}
+              className="p-8 hover:bg-white/[0.01] transition-all flex items-start gap-8 group cursor-default"
             >
-              <div className={`p-2.5 rounded-xl flex-shrink-0 ${
-                log.level === 'error' ? 'bg-rose-500/10 text-rose-400' :
-                log.level === 'warning' ? 'bg-amber-500/10 text-amber-400' :
-                'bg-blue-500/10 text-blue-400'
-              }`}>
-                {log.level === 'error' ? <XCircle size={18} /> : 
-                 log.level === 'warning' ? <AlertTriangle size={18} /> : 
-                 <Info size={18} />}
+              <div className={`p-3.5 rounded-2xl flex-shrink-0 border ${
+                log.level === 'error' ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' :
+                log.level === 'warning' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' :
+                'bg-zfs-accent/10 text-zfs-accent border-zfs-accent/20'
+              } group-hover:scale-110 transition-transform shadow-lg`}>
+                {log.level === 'error' ? <XCircle size={20} strokeWidth={2.5} /> : 
+                 log.level === 'warning' ? <AlertTriangle size={20} strokeWidth={2.5} /> : 
+                 <Info size={20} strokeWidth={2.5} />}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-3 mb-1">
-                  <span className={`text-[10px] font-bold uppercase tracking-widest ${
+                <div className="flex items-center gap-4 mb-2.5">
+                  <span className={`text-[10px] font-black uppercase tracking-[0.2em] ${
                     log.level === 'error' ? 'text-rose-400' :
                     log.level === 'warning' ? 'text-amber-400' :
-                    'text-blue-400'
+                    'text-zfs-accent'
                   }`}>
                     {log.level}
                   </span>
-                  <div className="w-1 h-1 rounded-full bg-white/10" />
-                  <span className="text-[10px] font-bold text-white/20 uppercase tracking-widest flex items-center gap-1.5">
-                    <Clock size={10} />
-                    {new Date(log.timestamp).toLocaleString()}
+                  <div className="w-1.5 h-1.5 rounded-full bg-slate-800" />
+                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                    <Clock size={12} className="opacity-40" />
+                    {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    <span className="opacity-40 text-[9px] lowercase mx-1">—</span>
+                    {new Date(log.timestamp).toLocaleDateString()}
                   </span>
                 </div>
-                <p className="text-sm font-medium text-white/80 leading-relaxed font-mono">{log.message}</p>
+                <p className="text-sm font-black text-slate-300 leading-relaxed font-mono tracking-tight group-hover:text-white transition-colors">{log.message}</p>
               </div>
               {log.pool && (
-                <div className="px-3 py-1 rounded-lg bg-white/5 border border-white/5 text-[10px] font-bold text-white/40 uppercase tracking-widest group-hover:border-white/10 group-hover:text-white/60 transition-all">
-                  {log.pool}
+                <div className="px-4 py-1.5 rounded-xl bg-white/[0.02] border border-white/[0.05] text-[10px] font-black text-slate-500 uppercase tracking-widest group-hover:border-zfs-accent/20 group-hover:text-zfs-accent transition-all">
+                  POOL: {log.pool}
                 </div>
               )}
             </motion.div>
           ))}
           {logs.length === 0 && (
-            <div className="py-40 flex flex-col items-center justify-center text-center">
-              <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center text-white/10 mb-6">
-                <Info size={40} />
+            <div className="py-48 flex flex-col items-center justify-center text-center">
+              <div className="w-24 h-24 bg-white/[0.02] rounded-full border border-white/[0.03] flex items-center justify-center text-white/5 mb-8">
+                <Info size={48} strokeWidth={1} />
               </div>
-              <h3 className="text-lg font-bold text-white/20 uppercase tracking-[0.2em]">No logs recorded</h3>
-              <p className="text-white/10 mt-2 text-sm italic">System events will appear here as they occur</p>
+              <h3 className="text-2xl font-black text-white/20 uppercase tracking-[0.2em]">Silence Observed</h3>
+              <p className="text-slate-700 mt-3 font-medium text-sm">System telemetry buffer is currently empty. Events will populate in real-time.</p>
             </div>
           )}
         </div>
