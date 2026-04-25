@@ -230,19 +230,28 @@ function SmartModal({ device, onClose }: { device: string; onClose: () => void }
 
 // ── Replace Disk Modal ────────────────────────────────────────────────────────
 function ReplaceDiskModal({
-  poolName, oldDisk, onClose, onSuccess
-}: { poolName: string; oldDisk: string; onClose: () => void; onSuccess: () => void }) {
-  const [newDisk, setNewDisk] = useState('');
-  const [force, setForce] = useState(false);
-  const [replacing, setReplacing] = useState(false);
-  const [error, setError] = useState('');
-  const [showPicker, setShowPicker] = useState(false);
+  poolName, poolDisks, preselectedDisk, onClose, onSuccess
+}: {
+  poolName: string;
+  poolDisks: { path: string; state: string }[];
+  preselectedDisk?: string;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [selectedOld, setSelectedOld] = useState(preselectedDisk || '');
+  const [newDisk, setNewDisk]         = useState('');
+  const [force, setForce]             = useState(false);
+  const [replacing, setReplacing]     = useState(false);
+  const [error, setError]             = useState('');
+  const [showPicker, setShowPicker]   = useState(false);
+  const [step, setStep]               = useState<1 | 2>(preselectedDisk ? 2 : 1);
 
   const handleReplace = async () => {
+    if (!selectedOld) { setError('Select the disk to replace'); return; }
     if (!newDisk.trim()) { setError('New device path is required'); return; }
     setReplacing(true); setError('');
     try {
-      await api.replaceDisk(poolName, oldDisk, newDisk.trim(), force);
+      await api.replaceDisk(poolName, selectedOld, newDisk.trim(), force);
       onSuccess();
     } catch (err: any) {
       setError(err.message || 'Replace failed');
@@ -254,7 +263,7 @@ function ReplaceDiskModal({
   return (
     <>
       <AnimatePresence>
-        {showPicker && <DevicePicker onSelect={p => setNewDisk(p)} onClose={() => setShowPicker(false)} />}
+        {showPicker && <DevicePicker onSelect={p => { setNewDisk(p); setShowPicker(false); }} onClose={() => setShowPicker(false)} />}
       </AnimatePresence>
       <motion.div
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -271,7 +280,7 @@ function ReplaceDiskModal({
             <div>
               <h3 className="text-lg font-black text-white tracking-tight">Replace Disk</h3>
               <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mt-0.5">
-                zpool replace {poolName}
+                zpool replace {poolName} · Step {step}/2
               </p>
             </div>
             <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-xl text-slate-500 hover:text-white">
@@ -280,58 +289,113 @@ function ReplaceDiskModal({
           </div>
 
           <div className="space-y-5">
-            <div className="p-3 rounded-xl bg-amber-400/5 border border-amber-400/15">
-              <p className="text-[9px] font-black text-amber-400 uppercase tracking-widest mb-1">Replacing</p>
-              <p className="text-[12px] font-mono text-white/80">{oldDisk}</p>
-            </div>
+            {step === 1 ? (
+              <>
+                <div>
+                  <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest mb-3">
+                    Step 1 — Select disk to replace
+                  </p>
+                  {poolDisks.length === 0 ? (
+                    <p className="text-[11px] text-slate-600 py-4 text-center">No disks found in pool</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {poolDisks.map((d, i) => (
+                        <button
+                          key={i}
+                          onClick={() => setSelectedOld(d.path)}
+                          className={`w-full flex items-center gap-4 p-3 rounded-xl border transition-all text-left ${
+                            selectedOld === d.path
+                              ? 'bg-amber-400/10 border-amber-400/25'
+                              : 'bg-white/[0.02] border-white/[0.04] hover:border-white/[0.08]'
+                          }`}
+                        >
+                          <HardDrive size={16} className={selectedOld === d.path ? 'text-amber-400' : 'text-slate-600'} strokeWidth={1.5} />
+                          <div className="flex-1 min-w-0">
+                            <span className="text-[12px] font-black text-white font-mono block truncate">{d.path}</span>
+                            <span className={`text-[9px] font-bold uppercase tracking-widest ${d.state === 'ONLINE' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                              {d.state}
+                            </span>
+                          </div>
+                          {selectedOld === d.path && <CheckCircle size={14} className="text-amber-400 flex-shrink-0" />}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="flex gap-3 pt-1">
+                  <button onClick={onClose} className="flex-1 apple-button apple-button-secondary">Cancel</button>
+                  <button
+                    onClick={() => setStep(2)}
+                    disabled={!selectedOld}
+                    className="flex-1 apple-button apple-button-primary disabled:opacity-40 gap-2"
+                  >
+                    <ChevronRight size={14} />
+                    <span className="text-[10px] font-black uppercase tracking-widest">Next</span>
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="p-3 rounded-xl bg-amber-400/5 border border-amber-400/15">
+                  <p className="text-[9px] font-black text-amber-400 uppercase tracking-widest mb-1">Replacing</p>
+                  <p className="text-[12px] font-mono text-white/80">{selectedOld}</p>
+                </div>
 
-            <div>
-              <label className="text-[9px] font-black text-slate-600 uppercase tracking-widest block mb-2">New Disk</label>
-              <div className="flex gap-2">
-                <input
-                  type="text" placeholder="/dev/sdb"
-                  value={newDisk} onChange={e => setNewDisk(e.target.value)}
-                  className="flex-1 bg-white/[0.03] border border-white/[0.06] rounded-xl px-4 py-3 text-[13px] text-white font-mono placeholder:text-slate-700 focus:outline-none focus:border-sky-400/40"
-                />
-                <button
-                  onClick={() => setShowPicker(true)}
-                  className="px-3 py-2 bg-white/[0.03] border border-white/[0.06] rounded-xl text-slate-500 hover:text-sky-400 hover:border-sky-400/30 transition-all"
-                >
-                  <HardDrive size={15} />
-                </button>
-              </div>
-            </div>
+                <div>
+                  <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest mb-2">
+                    Step 2 — Select replacement disk
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      type="text" placeholder="/dev/sdb or /path/to/disk"
+                      value={newDisk} onChange={e => setNewDisk(e.target.value)}
+                      className="flex-1 bg-white/[0.03] border border-white/[0.06] rounded-xl px-4 py-3 text-[13px] text-white font-mono placeholder:text-slate-700 focus:outline-none focus:border-sky-400/40"
+                    />
+                    <button
+                      onClick={() => setShowPicker(true)}
+                      className="px-3 py-2 bg-white/[0.03] border border-white/[0.06] rounded-xl text-slate-500 hover:text-sky-400 hover:border-sky-400/30 transition-all"
+                      title="Browse block devices"
+                    >
+                      <HardDrive size={15} />
+                    </button>
+                  </div>
+                </div>
 
-            <label className="flex items-center gap-3 cursor-pointer">
-              <div
-                onClick={() => setForce(v => !v)}
-                className={`w-10 h-5 rounded-full transition-colors relative ${force ? 'bg-amber-400' : 'bg-white/[0.06]'}`}
-              >
-                <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${force ? 'translate-x-5' : 'translate-x-0.5'}`} />
-              </div>
-              <span className="text-[10px] font-bold text-slate-400">Force replace (-f)</span>
-            </label>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <div
+                    onClick={() => setForce(v => !v)}
+                    className={`w-10 h-5 rounded-full transition-colors relative ${force ? 'bg-amber-400' : 'bg-white/[0.06]'}`}
+                  >
+                    <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${force ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                  </div>
+                  <span className="text-[10px] font-bold text-slate-400">Force replace (-f)</span>
+                </label>
 
-            {error && (
-              <div className="flex items-start gap-3 p-3 bg-rose-500/8 rounded-xl border border-rose-500/15">
-                <XCircle size={14} className="text-rose-400 flex-shrink-0 mt-0.5" />
-                <p className="text-[12px] font-bold text-rose-300">{error}</p>
-              </div>
+                {error && (
+                  <div className="flex items-start gap-3 p-3 bg-rose-500/8 rounded-xl border border-rose-500/15">
+                    <XCircle size={14} className="text-rose-400 flex-shrink-0 mt-0.5" />
+                    <p className="text-[12px] font-bold text-rose-300">{error}</p>
+                  </div>
+                )}
+
+                <div className="flex gap-3 pt-1">
+                  <button onClick={() => setStep(1)} className="apple-button apple-button-secondary gap-1">
+                    <ChevronDown size={13} className="rotate-90" />
+                    <span className="text-[10px] font-black uppercase tracking-widest">Back</span>
+                  </button>
+                  <button
+                    onClick={handleReplace}
+                    disabled={replacing || !newDisk.trim()}
+                    className="flex-1 apple-button apple-button-primary disabled:opacity-40 gap-2"
+                  >
+                    {replacing ? <Loader2 size={14} className="animate-spin" /> : <ArrowLeftRight size={14} />}
+                    <span className="text-[10px] font-black uppercase tracking-widest">
+                      {replacing ? 'Replacing...' : 'Replace'}
+                    </span>
+                  </button>
+                </div>
+              </>
             )}
-
-            <div className="flex gap-3 pt-1">
-              <button onClick={onClose} className="flex-1 apple-button apple-button-secondary">Cancel</button>
-              <button
-                onClick={handleReplace}
-                disabled={replacing || !newDisk.trim()}
-                className="flex-1 apple-button apple-button-primary disabled:opacity-40 gap-2"
-              >
-                {replacing ? <Loader2 size={14} className="animate-spin" /> : <ArrowLeftRight size={14} />}
-                <span className="text-[10px] font-black uppercase tracking-widest">
-                  {replacing ? 'Replacing...' : 'Replace'}
-                </span>
-              </button>
-            </div>
           </div>
         </motion.div>
       </motion.div>
@@ -480,18 +544,22 @@ function ImportPoolModal({ onClose, onSuccess }: { onClose: () => void; onSucces
 
 // ── Expand Pool Modal ─────────────────────────────────────────────────────────
 function ExpandPoolModal({
-  poolName, onClose, onSuccess
-}: { poolName: string; onClose: () => void; onSuccess: () => void }) {
-  const [disk, setDisk] = useState('');
+  poolName, poolDisks, onClose, onSuccess
+}: {
+  poolName: string;
+  poolDisks: { path: string; state: string }[];
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [selected, setSelected] = useState('');
   const [expanding, setExpanding] = useState(false);
   const [error, setError] = useState('');
-  const [showPicker, setShowPicker] = useState(false);
 
   const handleExpand = async () => {
-    if (!disk.trim()) { setError('Device path is required'); return; }
+    if (!selected) { setError('Select a disk to expand'); return; }
     setExpanding(true); setError('');
     try {
-      await api.expandPool(poolName, disk.trim());
+      await api.expandPool(poolName, selected);
       onSuccess();
     } catch (err: any) {
       setError(err.message || 'Expand failed');
@@ -501,72 +569,82 @@ function ExpandPoolModal({
   };
 
   return (
-    <>
-      <AnimatePresence>
-        {showPicker && <DevicePicker onSelect={p => setDisk(p)} onClose={() => setShowPicker(false)} />}
-      </AnimatePresence>
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md"
+      onClick={onClose}
+    >
       <motion.div
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md"
-        onClick={onClose}
+        initial={{ scale: 0.92, y: 24 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.92 }}
+        transition={{ duration: 0.25, ease: 'circOut' }}
+        className="glass-panel w-full max-w-md p-8 shadow-2xl"
+        onClick={e => e.stopPropagation()}
       >
-        <motion.div
-          initial={{ scale: 0.92, y: 24 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.92 }}
-          transition={{ duration: 0.25, ease: 'circOut' }}
-          className="glass-panel w-full max-w-md p-8 shadow-2xl"
-          onClick={e => e.stopPropagation()}
-        >
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h3 className="text-lg font-black text-white tracking-tight">Expand Pool</h3>
-              <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mt-0.5">
-                zpool online -e {poolName} &lt;disk&gt;
-              </p>
-            </div>
-            <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-xl text-slate-500 hover:text-white">
-              <X size={16} />
-            </button>
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h3 className="text-lg font-black text-white tracking-tight">Expand Pool</h3>
+            <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mt-0.5">
+              zpool online -e {poolName} &lt;disk&gt;
+            </p>
           </div>
-          <div className="space-y-5">
-            <div>
-              <label className="text-[9px] font-black text-slate-600 uppercase tracking-widest block mb-2">Device / Disk Path</label>
-              <div className="flex gap-2">
-                <input
-                  type="text" placeholder="/dev/sda"
-                  value={disk} onChange={e => setDisk(e.target.value)}
-                  className="flex-1 bg-white/[0.03] border border-white/[0.06] rounded-xl px-4 py-3 text-[13px] text-white font-mono placeholder:text-slate-700 focus:outline-none focus:border-sky-400/40"
-                />
-                <button
-                  onClick={() => setShowPicker(true)}
-                  className="px-3 py-2 bg-white/[0.03] border border-white/[0.06] rounded-xl text-slate-500 hover:text-sky-400 hover:border-sky-400/30 transition-all"
-                >
-                  <HardDrive size={15} />
-                </button>
-              </div>
-            </div>
-            {error && (
-              <div className="flex items-start gap-3 p-3 bg-rose-500/8 rounded-xl border border-rose-500/15">
-                <XCircle size={14} className="text-rose-400 flex-shrink-0 mt-0.5" />
-                <p className="text-[12px] font-bold text-rose-300">{error}</p>
+          <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-xl text-slate-500 hover:text-white">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="space-y-5">
+          <div>
+            <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest mb-3">
+              Select disk to expand (uses full capacity after physical replacement)
+            </p>
+            {poolDisks.length === 0 ? (
+              <p className="text-[11px] text-slate-600 py-4 text-center">No disks found in pool</p>
+            ) : (
+              <div className="space-y-2">
+                {poolDisks.map((d, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setSelected(d.path)}
+                    className={`w-full flex items-center gap-4 p-3 rounded-xl border transition-all text-left ${
+                      selected === d.path
+                        ? 'bg-indigo-400/10 border-indigo-400/25'
+                        : 'bg-white/[0.02] border-white/[0.04] hover:border-white/[0.08]'
+                    }`}
+                  >
+                    <HardDrive size={16} className={selected === d.path ? 'text-indigo-400' : 'text-slate-600'} strokeWidth={1.5} />
+                    <div className="flex-1 min-w-0">
+                      <span className="text-[12px] font-black text-white font-mono block truncate">{d.path}</span>
+                      <span className={`text-[9px] font-bold uppercase tracking-widest ${d.state === 'ONLINE' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {d.state}
+                      </span>
+                    </div>
+                    {selected === d.path && <CheckCircle size={14} className="text-indigo-400 flex-shrink-0" />}
+                  </button>
+                ))}
               </div>
             )}
-            <div className="flex gap-3 pt-1">
-              <button onClick={onClose} className="flex-1 apple-button apple-button-secondary">Cancel</button>
-              <button
-                onClick={handleExpand}
-                disabled={expanding || !disk.trim()}
-                className="flex-1 apple-button apple-button-primary disabled:opacity-40 gap-2"
-              >
-                {expanding ? <Loader2 size={14} className="animate-spin" /> : <Expand size={14} />}
-                <span className="text-[10px] font-black uppercase tracking-widest">
-                  {expanding ? 'Expanding...' : 'Expand'}
-                </span>
-              </button>
-            </div>
           </div>
-        </motion.div>
+          {error && (
+            <div className="flex items-start gap-3 p-3 bg-rose-500/8 rounded-xl border border-rose-500/15">
+              <XCircle size={14} className="text-rose-400 flex-shrink-0 mt-0.5" />
+              <p className="text-[12px] font-bold text-rose-300">{error}</p>
+            </div>
+          )}
+          <div className="flex gap-3 pt-1">
+            <button onClick={onClose} className="flex-1 apple-button apple-button-secondary">Cancel</button>
+            <button
+              onClick={handleExpand}
+              disabled={expanding || !selected}
+              className="flex-1 apple-button apple-button-primary disabled:opacity-40 gap-2"
+            >
+              {expanding ? <Loader2 size={14} className="animate-spin" /> : <Expand size={14} />}
+              <span className="text-[10px] font-black uppercase tracking-widest">
+                {expanding ? 'Expanding...' : 'Expand'}
+              </span>
+            </button>
+          </div>
+        </div>
       </motion.div>
-    </>
+    </motion.div>
   );
 }
 
@@ -898,7 +976,7 @@ export default function StoragePools({ pools, onRefresh }: StoragePoolsProps) {
   const [showImport,    setShowImport]    = useState(false);
   const [openMenu,      setOpenMenu]      = useState<string | null>(null);
   const [expandTarget,  setExpandTarget]  = useState<string | null>(null);
-  const [replaceTarget, setReplaceTarget] = useState<{ pool: string; disk: string } | null>(null);
+  const [replaceTarget, setReplaceTarget] = useState<{ pool: string; preselectedDisk?: string } | null>(null);
   const [smartTarget,   setSmartTarget]   = useState<string | null>(null);
   const [poolVdevs,     setPoolVdevs]     = useState<Record<string, any[]>>({});
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
@@ -1053,6 +1131,7 @@ export default function StoragePools({ pools, onRefresh }: StoragePoolsProps) {
         {expandTarget && (
           <ExpandPoolModal
             poolName={expandTarget}
+            poolDisks={getPoolDisks(expandTarget)}
             onClose={() => setExpandTarget(null)}
             onSuccess={() => {
               showToast(`Pool "${expandTarget}" expand command sent`, 'success');
@@ -1067,7 +1146,8 @@ export default function StoragePools({ pools, onRefresh }: StoragePoolsProps) {
         {replaceTarget && (
           <ReplaceDiskModal
             poolName={replaceTarget.pool}
-            oldDisk={replaceTarget.disk}
+            poolDisks={getPoolDisks(replaceTarget.pool)}
+            preselectedDisk={replaceTarget.preselectedDisk}
             onClose={() => setReplaceTarget(null)}
             onSuccess={() => {
               showToast(`Disk replacement started on "${replaceTarget.pool}"`, 'success');
@@ -1177,7 +1257,7 @@ export default function StoragePools({ pools, onRefresh }: StoragePoolsProps) {
                           onShowStatus={() => handleToggleStatus(pool.name)}
                           onResilver={() => handleResilver(pool.name)}
                           onExpand={() => setExpandTarget(pool.name)}
-                          onReplaceDisk={() => setReplaceTarget({ pool: pool.name, disk: disks[0]?.path || '' })}
+                          onReplaceDisk={() => setReplaceTarget({ pool: pool.name })}
                           onClose={() => setOpenMenu(null)}
                         />
                       )}
@@ -1240,7 +1320,7 @@ export default function StoragePools({ pools, onRefresh }: StoragePoolsProps) {
                           key={di}
                           disk={disk}
                           poolName={pool.name}
-                          onReplace={(d) => setReplaceTarget({ pool: pool.name, disk: d })}
+                          onReplace={(d) => setReplaceTarget({ pool: pool.name, preselectedDisk: d })}
                           onSmartClick={(d) => setSmartTarget(d)}
                         />
                       ))}

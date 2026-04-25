@@ -283,8 +283,18 @@ async fn pool_vdevs(Path(name): Path<String>) -> Result<Json<Value>, ApiError> {
 }
 
 async fn start_scrub(Path(name): Path<String>) -> Result<Json<Value>, ApiError> {
-    executor::zpool(&["scrub", &name]).await?;
-    Ok(Json(json!({ "message": format!("Scrub started on pool '{name}'") })))
+    match executor::zpool(&["scrub", &name]).await {
+        Ok(_) => Ok(Json(json!({ "message": format!("Scrub started on pool '{name}'") }))),
+        Err(ApiError::CommandFailed { ref stderr, .. })
+            if stderr.contains("does not support") || stderr.contains("module version") =>
+        {
+            Err(ApiError::BadRequest(format!(
+                "Scrub not supported: ZFS userland/kernel version mismatch. \
+                 Kernel module: {stderr}"
+            )))
+        }
+        Err(e) => Err(e),
+    }
 }
 
 async fn stop_scrub(Path(name): Path<String>) -> Result<Json<Value>, ApiError> {
@@ -372,10 +382,22 @@ async fn upgrade_pool(Path(name): Path<String>) -> Result<Json<Value>, ApiError>
 
 // ZFS Rewrite = zpool scrub (validates & rewrites checksums for all blocks)
 async fn resilver_pool(Path(name): Path<String>) -> Result<Json<Value>, ApiError> {
-    // Stop any existing scrub first (ignore error if none running)
-    let _ = executor::zpool(&["scrub", "-s", &name]).await;
-    executor::zpool(&["scrub", &name]).await?;
-    Ok(Json(json!({ "message": format!("Rewrite (scrub) started on pool '{name}'") })))
+    match executor::zpool(&["scrub", &name]).await {
+        Ok(_) => Ok(Json(json!({ "message": format!("Rewrite (scrub) started on pool '{name}'") }))),
+        Err(ApiError::CommandFailed { ref stderr, .. }) if stderr.contains("already in progress") => {
+            let _ = executor::zpool(&["scrub", "-s", &name]).await;
+            executor::zpool(&["scrub", &name]).await?;
+            Ok(Json(json!({ "message": format!("Rewrite (scrub) restarted on pool '{name}'") })))
+        }
+        Err(ApiError::CommandFailed { ref stderr, .. })
+            if stderr.contains("does not support") || stderr.contains("module version") =>
+        {
+            Err(ApiError::BadRequest(
+                "Scrub not supported: ZFS userland/kernel version mismatch. Upgrade kernel module or downgrade ZFS tools.".into()
+            ))
+        }
+        Err(e) => Err(e),
+    }
 }
 
 async fn pool_events(Path(name): Path<String>) -> Result<Json<Value>, ApiError> {

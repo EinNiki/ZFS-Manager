@@ -127,13 +127,40 @@ async fn destroy_dataset(
     Path(name): Path<String>,
     Query(q): Query<DestroyQuery>,
 ) -> Result<Json<Value>, ApiError> {
+    // When force is requested, try to unmount first (handles busy datasets)
+    if q.force {
+        if q.recursive {
+            let _ = executor::zfs(&["unmount", "-r", &name]).await;
+        } else {
+            let _ = executor::zfs(&["unmount", &name]).await;
+        }
+    }
+
     let mut args = vec!["destroy".to_string()];
     if q.recursive { args.push("-r".to_string()); }
     if q.force     { args.push("-f".to_string()); }
     args.push(name.clone());
     let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    executor::zfs(&refs).await?;
-    Ok(Json(json!({ "message": format!("Dataset '{name}' destroyed") })))
+
+    match executor::zfs(&refs).await {
+        Ok(_) => Ok(Json(json!({ "message": format!("Dataset '{name}' destroyed") }))),
+        Err(ApiError::CommandFailed { ref stderr, .. })
+            if (stderr.contains("has children") || stderr.contains("filesystem has children"))
+               && !q.recursive =>
+        {
+            Err(ApiError::BadRequest(
+                "Dataset has children. Enable 'Recursive' to delete all child datasets.".into()
+            ))
+        }
+        Err(ApiError::CommandFailed { ref stderr, .. })
+            if stderr.contains("dataset is busy") && !q.force =>
+        {
+            Err(ApiError::BadRequest(
+                "Dataset is busy (mounted). Enable 'Force' to unmount and delete.".into()
+            ))
+        }
+        Err(e) => Err(e),
+    }
 }
 
 async fn mount_dataset(Json(body): Json<NameBody>) -> Result<Json<Value>, ApiError> {

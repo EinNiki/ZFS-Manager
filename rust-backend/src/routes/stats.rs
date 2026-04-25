@@ -60,7 +60,40 @@ fn parse_meminfo(raw: &str) -> (i64, i64, i64) {
     (total, free, available)
 }
 
+// Returns (total_jiffies, idle_jiffies) from /proc/stat cpu line
+fn read_cpu_jiffies() -> (u64, u64) {
+    let content = std::fs::read_to_string("/proc/stat").unwrap_or_default();
+    for line in content.lines() {
+        if line.starts_with("cpu ") {
+            let vals: Vec<u64> = line
+                .split_whitespace()
+                .skip(1)
+                .map(|s| s.parse().unwrap_or(0))
+                .collect();
+            // user, nice, system, idle, iowait, irq, softirq, steal, guest, guest_nice
+            let idle  = vals.get(3).copied().unwrap_or(0)
+                      + vals.get(4).copied().unwrap_or(0); // idle + iowait
+            let total: u64 = vals.iter().sum();
+            return (total, idle);
+        }
+    }
+    (0, 0)
+}
+
 async fn get_system_stats() -> Result<Json<Value>, ApiError> {
+    // Two CPU readings 250ms apart for real-time CPU%
+    let (t1, i1) = read_cpu_jiffies();
+    tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
+    let (t2, i2) = read_cpu_jiffies();
+
+    let cpu_percent = if t2 > t1 {
+        let dt = (t2 - t1) as f64;
+        let di = (i2.saturating_sub(i1)) as f64;
+        ((dt - di) / dt * 100.0).clamp(0.0, 100.0)
+    } else {
+        0.0
+    };
+
     let arc_raw     = std::fs::read_to_string("/proc/spl/kstat/zfs/arcstats").unwrap_or_default();
     let loadavg_raw = std::fs::read_to_string("/proc/loadavg").unwrap_or_default();
     let meminfo_raw = std::fs::read_to_string("/proc/meminfo").unwrap_or_default();
@@ -91,6 +124,7 @@ async fn get_system_stats() -> Result<Json<Value>, ApiError> {
         "uptime_secs":    uptime_secs,
         "timestamp":      chrono::Utc::now().to_rfc3339(),
         "cpu_load":       cpu_load,
+        "cpu_percent":    cpu_percent,
         "arc_size":       arc_size,
         "arc_hit_ratio":  arc_hit_ratio,
         "memory": {
@@ -127,7 +161,6 @@ async fn list_disks() -> Result<Json<Value>, ApiError> {
         let json_str = String::from_utf8_lossy(&output.stdout);
         let parsed: Value = serde_json::from_str(&json_str)
             .unwrap_or_else(|_| json!({ "blockdevices": [] }));
-        // Only return actual disks (type == "disk"), not loops, roms, partitions
         let filtered = if let Some(devs) = parsed["blockdevices"].as_array() {
             devs.iter()
                 .filter(|d| d["type"].as_str() == Some("disk"))
@@ -138,7 +171,6 @@ async fn list_disks() -> Result<Json<Value>, ApiError> {
         };
         Ok(Json(json!({ "blockdevices": filtered })))
     } else {
-        // lsblk not available or failed — return empty list gracefully
         Ok(Json(json!({ "blockdevices": [] })))
     }
 }

@@ -21,7 +21,9 @@ COPY src ./src
 RUN touch src/main.rs && cargo build --release
 
 # ── Stage 2: Runtime ──────────────────────────────────────────────────────────
-FROM alpine:latest
+# alpine:3.20 ships ZFS 2.2.5 which is ABI-compatible with the 2.2.x kernel module.
+# alpine:latest/edge ships ZFS 2.4.x which breaks scrub against older kernel modules.
+FROM alpine:3.20
 
 # Install ZFS tools
 RUN apk add --no-cache zfs util-linux smartmontools

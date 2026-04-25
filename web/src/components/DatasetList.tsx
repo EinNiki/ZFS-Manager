@@ -122,11 +122,10 @@ function PropertiesModal({ dataset, onClose, onSaved }: {
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [props, setProps]       = useState<PropValues>({ compression: 'lz4', quotaNum: '', quotaUnit: 'G', atime: 'on', dedup: 'off', readonly: 'off' });
-  const [loading, setLoading]   = useState(true);
-  const [saving, setSaving]     = useState(false);
-  const [rewriting, setRewriting] = useState(false);
-  const [error, setError]       = useState('');
+  const [props, setProps]   = useState<PropValues>({ compression: 'lz4', quotaNum: '', quotaUnit: 'G', atime: 'on', dedup: 'off', readonly: 'off' });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving]   = useState(false);
+  const [error, setError]     = useState('');
 
   useEffect(() => {
     api.getDatasetProperties(dataset.name, 'compression,quota,atime,dedup,readonly')
@@ -167,18 +166,6 @@ function PropertiesModal({ dataset, onClose, onSaved }: {
       setError(err.message || 'Failed to save properties');
     } finally {
       setSaving(false);
-    }
-  };
-
-  const handleRewrite = async () => {
-    setRewriting(true);
-    try {
-      await api.rewriteDataset(dataset.name);
-      onSaved();
-    } catch (err: any) {
-      setError(err.message || 'Rewrite failed');
-    } finally {
-      setRewriting(false);
     }
   };
 
@@ -274,17 +261,6 @@ function PropertiesModal({ dataset, onClose, onSaved }: {
             )}
 
             <div className="flex gap-3 pt-1">
-              <button
-                onClick={handleRewrite}
-                disabled={rewriting}
-                title="Run scrub on parent pool to rewrite all data blocks"
-                className="apple-button bg-sky-400/8 border border-sky-400/15 text-sky-400 hover:bg-sky-400/15 disabled:opacity-40 gap-2"
-              >
-                {rewriting ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} />}
-                <span className="text-[9px] font-black uppercase tracking-widest">
-                  {rewriting ? 'Rewriting...' : 'Rewrite'}
-                </span>
-              </button>
               <button onClick={onClose} className="flex-1 apple-button apple-button-secondary">Cancel</button>
               <button
                 onClick={handleSave}

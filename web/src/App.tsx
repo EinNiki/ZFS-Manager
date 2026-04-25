@@ -101,19 +101,21 @@ export default function App() {
           const iostatRes = await api.getPoolIoStat(mappedPools[0].name);
           if (iostatRes.iostat?.length > 0) {
             const row = iostatRes.iostat[0];
-            const read = parseFloat(row[3] ?? '0') / 1024 / 1024;
-            const write = parseFloat(row[4] ?? '0') / 1024 / 1024;
+            // iostat columns: name, alloc, free, read_ops, write_ops, read_bw, write_bw
+            const readBw  = parseFloat(row[5] ?? '0') / 1024 / 1024;  // bytes/s → MB/s
+            const writeBw = parseFloat(row[6] ?? '0') / 1024 / 1024;  // bytes/s → MB/s
+            const iops    = parseFloat(row[3] ?? '0') + parseFloat(row[4] ?? '0'); // ops/s
             const time = new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
             setStats(prev => [...prev.slice(-29), {
               name: time,
               timestamp: time,
-              read,
-              write,
-              iops: (parseFloat(row[5] ?? '0') + parseFloat(row[6] ?? '0')),
-              cpu: statsRes?.cpu_load?.[0] ?? 0,
+              read:   readBw,
+              write:  writeBw,
+              iops,
+              cpu:    statsRes?.cpu_percent ?? statsRes?.cpu_load?.[0] ?? 0,
               arcHit: statsRes?.arc_hit_ratio ?? 0,
-              alloc: Number(row[1] ?? 0) / 1e9,
-              free: Number(row[2] ?? 0) / 1e9,
+              alloc:  Number(row[1] ?? 0) / 1e9,
+              free:   Number(row[2] ?? 0) / 1e9,
             }]);
           }
         } catch { /* no iostat available */ }
