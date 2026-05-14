@@ -73,6 +73,18 @@ function fmtDays(d: number): string {
   return `~${(d / 365).toFixed(1)} yrs`;
 }
 
+function computeFillInfo(hist7d: any[], freeGB: number): { text: string; color: string } {
+  if (hist7d.length < 3) return { text: 'Insufficient data', color: 'var(--text-muted)' };
+  const avgWriteMb   = hist7d.reduce((s, d) => s + (d.write || 0), 0) / hist7d.length;
+  const dailyWriteGB = avgWriteMb * 86400 / 1024;
+  if (dailyWriteGB < 0.001 || freeGB <= 0) return { text: 'No fill risk', color: 'var(--success)' };
+  const days = freeGB / dailyWriteGB;
+  if (days > 730) return { text: 'No fill risk', color: 'var(--success)' };
+  if (days >= 90)  return { text: `Full in ~${Math.round(days / 30)} months`, color: 'var(--text-secondary)' };
+  if (days >= 14)  return { text: `Full in ~${Math.round(days / 7)} weeks`,   color: 'var(--warning)' };
+  return { text: `Full in ~${Math.round(days)} days`, color: 'var(--danger)' };
+}
+
 /* ── Chart config ── */
 const TOOLTIP_STYLE = {
   contentStyle: {
@@ -121,12 +133,14 @@ function CapacityBanner({ pool, daysUntilFull }: { pool: ZFSPool; daysUntilFull:
 }
 
 /* ── Stat card ── */
-function StatCard({ label, value, sub, icon: Icon, color }: {
-  label: string; value: string; sub?: string; icon: any; color?: string;
+function StatCard({ label, value, sub, fillLine, icon: Icon, color }: {
+  label: string; value: string; sub?: string;
+  fillLine?: { text: string; color: string };
+  icon: any; color?: string;
 }) {
   const c = color || 'var(--accent)';
   return (
-    <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '20px 22px' }}>
+    <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '20px 22px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 14 }}>
         <span style={{ fontFamily: 'var(--font-ui)', fontSize: 11, fontWeight: 500, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
           {label}
@@ -144,7 +158,12 @@ function StatCard({ label, value, sub, icon: Icon, color }: {
       <div style={{ fontFamily: 'var(--font-mono)', fontSize: 26, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1, letterSpacing: '-0.02em' }}>
         {value}
       </div>
-      {sub && <div style={{ fontFamily: 'var(--font-ui)', fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>{sub}</div>}
+      {fillLine && (
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: fillLine.color, marginTop: 6, fontWeight: 500 }}>
+          {fillLine.text}
+        </div>
+      )}
+      {sub && <div style={{ fontFamily: 'var(--font-ui)', fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>{sub}</div>}
     </div>
   );
 }
@@ -332,6 +351,7 @@ export default function Dashboard({
 
   const [histData1d, setHistData1d] = useState<any[]>([]);
   const [histData1m, setHistData1m] = useState<any[]>([]);
+  const [histData7d, setHistData7d] = useState<any[]>([]);
 
   const usagePct = totalCapacity > 0 ? (totalUsedStorage / totalCapacity) * 100 : 0;
   const animPct  = useCounter(usagePct);
@@ -371,6 +391,16 @@ export default function Dashboard({
         }
       }
       setHistData1m(Array.from(seen.values()));
+    }).catch(() => {});
+
+    api.getMetricsHistory('1w').then(res => {
+      const seen = new Map<string, any>();
+      for (const m of (res.metrics || [])) {
+        if (!seen.has(m.collected_at)) {
+          seen.set(m.collected_at, { write: m.write_bw_mb });
+        }
+      }
+      setHistData7d(Array.from(seen.values()));
     }).catch(() => {});
   }, []);
 
@@ -423,10 +453,8 @@ export default function Dashboard({
             <StatCard
               label="Available Space"
               value={formatBytes(freeBytes, 1)}
-              sub={daysUntilFull !== null
-                ? daysUntilFull > 365 ? 'Stable — plenty of runway'
-                : `${fmtDays(daysUntilFull)} at current rate`
-                : `${(100 - usagePct).toFixed(1)}% free`}
+              fillLine={computeFillInfo(histData7d, freeBytes / 1e9)}
+              sub={`${(100 - usagePct).toFixed(1)}% free`}
               icon={TrendingUp}
               color={daysUntilFull !== null && daysUntilFull < 14 ? 'var(--danger)'
                 : daysUntilFull !== null && daysUntilFull < 30 ? 'var(--warning)' : 'var(--success)'}

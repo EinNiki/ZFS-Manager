@@ -3,7 +3,7 @@ import {
   AreaChart, Area, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
-import { ArrowUp, ArrowDown, Activity, Zap, HardDrive, Edit2, Check, Plus } from 'lucide-react';
+import { Activity, HardDrive, Edit2, Check, Plus } from 'lucide-react';
 import { api } from '../api';
 import { useLayout } from '../hooks/useLayout';
 import WidgetShell from './WidgetShell';
@@ -161,28 +161,11 @@ function GaugeCard({ label, value, unit, color, sub }: {
   );
 }
 
-/* ── Sparkline ── */
-function Sparkline({ data, dataKey, color }: { data: any[]; dataKey: string; color: string }) {
-  return (
-    <ResponsiveContainer width="100%" height="100%">
-      <AreaChart data={data} margin={{ top: 2, right: 0, left: 0, bottom: 2 }}>
-        <defs>
-          <linearGradient id={`spark-${dataKey}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%"   stopColor={color} stopOpacity={0.2} />
-            <stop offset="100%" stopColor={color} stopOpacity={0}   />
-          </linearGradient>
-        </defs>
-        <Area type="monotone" dataKey={dataKey} stroke={color} strokeWidth={1.5}
-          fill={`url(#spark-${dataKey})`} dot={false} isAnimationActive={false} />
-      </AreaChart>
-    </ResponsiveContainer>
-  );
-}
+
 
 const WIDGET_LABELS: Record<string, string> = {
   'live-gauges':     'Live I/O Gauges',
   'io-chart':        'Historical I/O Chart',
-  'throughput':      'Throughput Summary',
   'storage-history': 'Storage Space History',
   'smart-health':    'SMART / Disk Health',
 };
@@ -257,7 +240,6 @@ export default function Performance({ stats }: PerformanceProps) {
   const avgW   = chartData.length ? chartData.reduce((s, d) => s + (d.write || 0), 0) / chartData.length : 0;
   const peakR  = chartData.reduce((m, d) => Math.max(m, d.read  || 0), 0);
   const peakW  = chartData.reduce((m, d) => Math.max(m, d.write || 0), 0);
-  const sparkData = liveStats.slice(-40);
 
   // Live peaks for gauges (always from live data)
   const livePeakR = liveStats.reduce((m, d) => Math.max(m, d.read  || 0), 0);
@@ -425,76 +407,53 @@ export default function Performance({ stats }: PerformanceProps) {
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
+                {!liveMode && chartData.length > 0 && (
+                  <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)', display: 'flex', gap: 0 }}>
+                    {/* Read column */}
+                    <div style={{ flex: 1, paddingRight: 20 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: C.read, display: 'inline-block', flexShrink: 0 }} />
+                        <span style={{ fontFamily: 'var(--font-ui)', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: C.read }}>Read</span>
+                      </div>
+                      {[
+                        { label: 'Avg ↑ Read',   value: fmtBw(avgR)   },
+                        { label: 'Peak ↑ Read',  value: fmtBw(peakR)  },
+                        { label: 'Total ↑ Read', value: fmtGB(totalR) },
+                      ].map(({ label, value }) => (
+                        <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
+                          <span style={{ fontFamily: 'var(--font-ui)', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</span>
+                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: C.read, fontWeight: 700 }}>{value}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {/* Vertical divider */}
+                    <div style={{ width: 1, background: 'var(--border)', flexShrink: 0 }} />
+                    {/* Write column */}
+                    <div style={{ flex: 1, paddingLeft: 20 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: C.write, display: 'inline-block', flexShrink: 0 }} />
+                        <span style={{ fontFamily: 'var(--font-ui)', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: C.write }}>Write</span>
+                      </div>
+                      {[
+                        { label: 'Avg ↓ Write',   value: fmtBw(avgW)   },
+                        { label: 'Peak ↓ Write',  value: fmtBw(peakW)  },
+                        { label: 'Total ↓ Write', value: fmtGB(totalW) },
+                      ].map(({ label, value }) => (
+                        <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
+                          <span style={{ fontFamily: 'var(--font-ui)', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</span>
+                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: C.write, fontWeight: 700 }}>{value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </Panel>
             )}
           </div>
         );
 
       case 'throughput':
-        return (
-          <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-              <div>
-                <div style={{ fontFamily: 'var(--font-ui)', fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Throughput Summary</div>
-                <div style={{ fontFamily: 'var(--font-ui)', fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                  {interval} window · {secPerPt}s/sample
-                </div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
-                <Zap size={10} style={{ color: C.iops, opacity: 0.6 }} />
-                {chartData.length} pts
-              </div>
-            </div>
-
-            <div className="perf-stats-grid">
-              {[
-                { label: 'Avg ↑ Read',   value: fmtBw(avgR),   color: C.read  },
-                { label: 'Avg ↓ Write',  value: fmtBw(avgW),   color: C.write },
-                { label: 'Peak ↑ Read',  value: fmtBw(peakR),  color: C.read  },
-                { label: 'Peak ↓ Write', value: fmtBw(peakW),  color: C.write },
-                { label: 'Total ↑ Read', value: fmtGB(totalR), color: C.read  },
-                { label: 'Total ↓ Write',value: fmtGB(totalW), color: C.write },
-              ].map(({ label, value, color }) => (
-                <div key={label} style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '14px 16px' }}>
-                  <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>{label}</div>
-                  <div style={{ fontSize: 18, fontFamily: 'var(--font-mono)', color, fontWeight: 700, letterSpacing: '-0.02em' }}>{value}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* Sparklines */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 12 }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                  <ArrowUp size={11} style={{ color: C.read }} />
-                  <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: C.read }}>Read</span>
-                </div>
-                <div style={{ height: 48 }}><Sparkline data={sparkData} dataKey="read" color={C.read} /></div>
-              </div>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                  <ArrowDown size={11} style={{ color: C.write }} />
-                  <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: C.write }}>Write</span>
-                </div>
-                <div style={{ height: 48 }}><Sparkline data={sparkData} dataKey="write" color={C.write} /></div>
-              </div>
-            </div>
-
-            {/* R/W ratio bar */}
-            {(totalR + totalW) > 0 && (
-              <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontSize: 10, fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
-                  <span style={{ color: C.read }}>↑ {((totalR / (totalR + totalW)) * 100).toFixed(1)}% read</span>
-                  <span style={{ color: C.write }}>{((totalW / (totalR + totalW)) * 100).toFixed(1)}% write ↓</span>
-                </div>
-                <div style={{ height: 3, borderRadius: 9999, overflow: 'hidden', display: 'flex', background: 'rgba(255,255,255,0.04)' }}>
-                  <div style={{ height: '100%', background: C.read, opacity: 0.7, width: `${(totalR / (totalR + totalW)) * 100}%`, transition: 'width 0.5s' }} />
-                  <div style={{ height: '100%', flex: 1, background: C.write, opacity: 0.7 }} />
-                </div>
-              </div>
-            )}
-          </div>
-        );
+        return null;
 
       case 'storage-history':
         return !loadingHistory && chartData.length > 0 ? (
