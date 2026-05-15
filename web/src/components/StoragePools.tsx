@@ -655,7 +655,7 @@ function DiskRow({ disk, poolName, onReplace, onSmartClick }: {
       <HardDrive size={13} style={{ color: isOnline ? 'var(--text-muted)' : 'var(--danger)', flexShrink: 0 }} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div title={disk.path} style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-primary)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{disk.path}</div>
-        <div style={{ fontSize: 9, color: isOnline ? 'var(--text-muted)' : 'var(--danger)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{disk.state}</div>
+        <div style={{ fontSize: 9, color: isOnline ? 'var(--success)' : 'var(--danger)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{disk.state}</div>
       </div>
       <div style={{ display: 'flex', gap: 4, opacity: hov ? 1 : 0, transition: 'opacity 0.12s' }}>
         <button title="SMART Data" onClick={() => onSmartClick(disk.path)} style={{ width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', cursor: 'pointer', color: 'var(--text-muted)' }}>
@@ -774,6 +774,7 @@ export default function StoragePools({ pools, onRefresh, zfsVersion }: StoragePo
   }, []);
 
   const handleScrub = async (poolName: string) => {
+    if (!window.confirm(`Start ZFS scrub on pool "${poolName}"? This may impact performance.`)) return;
     setScrubState(s => ({ ...s, [poolName]: 'running' }));
     setScrubProgress(p => ({ ...p, [poolName]: { inProgress: true, done: false, progress: 0, timeRemaining: '', scan: '' } }));
     try {
@@ -788,6 +789,7 @@ export default function StoragePools({ pools, onRefresh, zfsVersion }: StoragePo
   };
 
   const handleResilver = async (poolName: string) => {
+    if (!window.confirm(`Start ZFS resilver (scrub) on pool "${poolName}"?`)) return;
     try {
       await api.resilverPool(poolName);
       showToast(`Rewrite (scrub) started on ${poolName}`, 'success');

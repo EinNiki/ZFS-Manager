@@ -54,13 +54,19 @@ function fmtDays(d: number): string {
   return `~${(d / 365).toFixed(1)} yrs`;
 }
 
-function computeFillText(dailyGB: number, freeGB: number): { text: string; color: string } {
-  if (dailyGB < 0.001 || freeGB <= 0) return { text: 'No fill risk', color: 'var(--success)' };
+function computeFillDate(dailyGB: number, freeGB: number): { text: string; color: string } {
+  if (dailyGB < 0.001 || freeGB <= 0) return { text: '–', color: 'var(--text-muted)' };
   const days = freeGB / dailyGB;
-  if (days > 730) return { text: 'No fill risk', color: 'var(--success)' };
-  if (days >= 90) return { text: `Full in ~${Math.round(days / 30)} months`, color: 'var(--text-secondary)' };
-  if (days >= 14) return { text: `Full in ~${Math.round(days / 7)} weeks`,   color: 'var(--warning)' };
-  return { text: `Full in ~${Math.round(days)} days`, color: 'var(--danger)' };
+  if (days > 730) return { text: '–', color: 'var(--text-muted)' };
+  const fillDate = new Date();
+  fillDate.setDate(fillDate.getDate() + Math.round(days));
+  const dd   = String(fillDate.getDate()).padStart(2, '0');
+  const mm   = String(fillDate.getMonth() + 1).padStart(2, '0');
+  const yyyy = fillDate.getFullYear();
+  const dateStr = `${dd}.${mm}.${yyyy}`;
+  if (days < 14) return { text: dateStr, color: 'var(--danger)' };
+  if (days < 90) return { text: dateStr, color: 'var(--warning)' };
+  return { text: dateStr, color: 'var(--text-secondary)' };
 }
 
 // Fix #7 — real time-until-full from DB history
@@ -76,8 +82,8 @@ function useFillPrediction(freeBytes: number) {
 
     const freeGB = freeBytes / 1e9;
     const windows = [
-      { api: '1m', label: 'last 30 days' },
-      { api: '1w', label: 'last 7 days' },
+      { api: '1m', label: 'last 30d' },
+      { api: '1w', label: 'last 7d' },
       { api: '1d', label: 'last 24h' },
       { api: '1h', label: 'last 1h' },
     ];
@@ -91,13 +97,14 @@ function useFillPrediction(freeBytes: number) {
 
           const avgWriteMb = metrics.reduce((s: number, m: any) => s + (m.write_bw_mb || 0), 0) / metrics.length;
           const dailyGB    = avgWriteMb * 86400 / 1024;
-          const { text, color } = computeFillText(dailyGB, freeGB);
+          const { text, color } = computeFillDate(dailyGB, freeGB);
+          const rateStr = dailyGB < 0.001 ? '0' : dailyGB < 1 ? dailyGB.toFixed(2) : dailyGB.toFixed(1);
 
-          setPrediction({ text, color, windowLabel: `Based on ${w.label}` });
+          setPrediction({ text, color, windowLabel: `Ø ${rateStr} GB/day · ${w.label}` });
           return;
         } catch { /* try next */ }
       }
-      setPrediction({ text: 'Insufficient data', color: 'var(--text-muted)', windowLabel: '' });
+      setPrediction({ text: '–', color: 'var(--text-muted)', windowLabel: '' });
     })();
   }, [freeBytes]);
 
@@ -193,7 +200,7 @@ function StatCard({ label, value, sub, fillLine, icon: Icon, color, minHeight = 
               {fillLine.text}
             </div>
             {fillLine.sub && (
-              <div style={{ fontFamily: 'var(--font-ui)', fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+              <div style={{ fontFamily: 'var(--font-ui)', fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
                 {fillLine.sub}
               </div>
             )}
@@ -255,6 +262,7 @@ function PoolCard({ pool, daysUntilFull }: { pool: ZFSPool; daysUntilFull: numbe
 
   const handleScrub = async () => {
     if (scrubState === 'running') return;
+    if (!window.confirm(`Start ZFS scrub on pool "${pool.name}"? This may impact performance.`)) return;
     setScrubState('running');
     try {
       await api.startScrub(pool.name);
@@ -787,10 +795,36 @@ export default function Dashboard({
                     <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-secondary)', width: 96, textAlign: 'right', flexShrink: 0 }}>{value}</div>
                   </div>
                 ))}
-                {uptime !== '—' && (
-                  <div style={{ paddingTop: 10, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)' }}>Uptime</span>
-                    <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>{uptime}</span>
+
+                {/* ARC Detailed Breakdown */}
+                {systemStats?.arc_size > 0 && (
+                  <div style={{ marginTop: 8, paddingTop: 12, borderTop: '1px solid var(--border-subtle)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                      <span style={{ fontFamily: 'var(--font-ui)', fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>ARC Breakdown</span>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-secondary)' }}>
+                        {formatBytes(systemStats.arc_size)} / {formatBytes(systemStats.arc_target || 0)}
+                      </span>
+                    </div>
+                    <div className="progress-track" style={{ display: 'flex', overflow: 'hidden' }}>
+                      <div style={{
+                        width: `${(systemStats.arc_data / systemStats.arc_target) * 100}%`,
+                        height: '100%', background: '#3b82f6', transition: 'width 0.3s ease'
+                      }} title="Data" />
+                      <div style={{
+                        width: `${(systemStats.arc_metadata / systemStats.arc_target) * 100}%`,
+                        height: '100%', background: '#a855f7', transition: 'width 0.3s ease'
+                      }} title="Metadata" />
+                    </div>
+                    <div style={{ display: 'flex', gap: 12, marginTop: 6 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#3b82f6' }} />
+                        <span style={{ fontSize: 9, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)' }}>Data: {formatBytes(systemStats.arc_data)}</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#a855f7' }} />
+                        <span style={{ fontSize: 9, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)' }}>Meta: {formatBytes(systemStats.arc_metadata)}</span>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>

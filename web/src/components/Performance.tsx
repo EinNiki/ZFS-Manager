@@ -148,13 +148,19 @@ function transformHistory(metrics: any[], interval: Interval): any[] {
   }));
 }
 
-function computeFillText(dailyGB: number, freeGB: number): { text: string; color: string } {
-  if (dailyGB < 0.001 || freeGB <= 0) return { text: 'No fill risk', color: 'var(--success)' };
+function computeFillDate(dailyGB: number, freeGB: number): { text: string; color: string } {
+  if (dailyGB < 0.001 || freeGB <= 0) return { text: '–', color: 'var(--text-muted)' };
   const days = freeGB / dailyGB;
-  if (days > 730) return { text: 'No fill risk', color: 'var(--success)' };
-  if (days >= 90) return { text: `Full in ~${Math.round(days / 30)} months`, color: 'var(--text-secondary)' };
-  if (days >= 14) return { text: `Full in ~${Math.round(days / 7)} weeks`, color: 'var(--warning)' };
-  return { text: `Full in ~${Math.round(days)} days`, color: 'var(--danger)' };
+  if (days > 730) return { text: '–', color: 'var(--text-muted)' };
+  const fillDate = new Date();
+  fillDate.setDate(fillDate.getDate() + Math.round(days));
+  const dd   = String(fillDate.getDate()).padStart(2, '0');
+  const mm   = String(fillDate.getMonth() + 1).padStart(2, '0');
+  const yyyy = fillDate.getFullYear();
+  const dateStr = `${dd}.${mm}.${yyyy}`;
+  if (days < 14) return { text: dateStr, color: 'var(--danger)' };
+  if (days < 90) return { text: dateStr, color: 'var(--warning)' };
+  return { text: dateStr, color: 'var(--text-secondary)' };
 }
 
 function Skeleton({ height = 200 }: { height?: number }) {
@@ -353,7 +359,7 @@ export default function Performance({ stats, liveMetrics, serverTimeOffsetMs = 0
       return metrics;
     }
 
-    function buildPredictions(metrics: any[]): any[] {
+    function buildPredictions(metrics: any[], windowLabel: string): any[] {
       const poolMap = new Map<string, { writes: number[]; latestFreeGb: number }>();
       for (const m of metrics) {
         const name = m.pool_name || 'default';
@@ -367,11 +373,9 @@ export default function Performance({ stats, liveMetrics, serverTimeOffsetMs = 0
         if (data.writes.length < 2) continue;
         const avgWrite = data.writes.reduce((a, b) => a + b, 0) / data.writes.length;
         const dailyGB  = avgWrite * 86400 / 1024;
-        const { text, color } = computeFillText(dailyGB, data.latestFreeGb);
-        const rateLabel = dailyGB >= 1
-          ? `${dailyGB.toFixed(2)} GB/day`
-          : `${(dailyGB * 1024).toFixed(1)} MB/day`;
-        result.push({ pool: name, text, color, rate: rateLabel, points: data.writes.length });
+        const { text, color } = computeFillDate(dailyGB, data.latestFreeGb);
+        const rateStr = dailyGB < 0.001 ? '0' : dailyGB < 1 ? dailyGB.toFixed(2) : dailyGB.toFixed(1);
+        result.push({ pool: name, text, color, rate: rateStr, windowLabel, points: data.writes.length });
       }
       return result;
     }
@@ -379,7 +383,8 @@ export default function Performance({ stats, liveMetrics, serverTimeOffsetMs = 0
     (async () => {
       try {
         const metrics = await fetchForInterval(interval);
-        const preds = buildPredictions(metrics);
+        const intervalLabel = INTERVALS.find(i => i.key === interval)?.label ?? interval;
+        const preds = buildPredictions(metrics, intervalLabel);
 
         if (preds.length > 0) {
           setStoragePredictions(preds);
@@ -390,10 +395,11 @@ export default function Performance({ stats, liveMetrics, serverTimeOffsetMs = 0
           for (const fb of fallbackOrder) {
             try {
               const fbMetrics = await fetchForInterval(fb);
-              const fbPreds = buildPredictions(fbMetrics);
+              const fbLabel = INTERVALS.find(i => i.key === fb)?.label ?? fb;
+              const fbPreds = buildPredictions(fbMetrics, fbLabel);
               if (fbPreds.length > 0) {
                 setStoragePredictions(fbPreds);
-                setStorageFallbackLabel(INTERVALS.find(i => i.key === fb)?.label ?? fb);
+                setStorageFallbackLabel(fbLabel);
                 found = true;
                 break;
               }
@@ -725,31 +731,31 @@ export default function Performance({ stats, liveMetrics, serverTimeOffsetMs = 0
               </ResponsiveContainer>
             </div>
 
-            {/* Time Until Full — uses same interval as main chart (fix new#6) */}
+            {/* Fill date predictions — uses same interval as main chart */}
             <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
               <div style={{ fontFamily: 'var(--font-ui)', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 10 }}>
-                Time Until Full
+                Fill Date
               </div>
 
               {loadingStoragePred ? (
                 <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)' }}>Computing…</div>
               ) : (
                 <>
-                  {storageInsufficient && (
+                  {storageInsufficient && storageFallbackLabel && (
                     <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)', marginBottom: 8 }}>
-                      Not enough data for {INTERVALS.find(i => i.key === interval)?.label ?? interval}
-                      {storageFallbackLabel ? ` — showing best available estimate (${storageFallbackLabel})` : ''}
+                      No data for {INTERVALS.find(i => i.key === interval)?.label ?? interval} — using {storageFallbackLabel}
                     </div>
                   )}
                   {storagePredictions.length === 0 ? (
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)' }}>Insufficient data</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)' }}>–</div>
                   ) : storagePredictions.map(pred => (
-                    <div key={pred.pool} style={{ marginBottom: 8 }}>
-                      <div style={{ fontFamily: 'var(--font-ui)', fontSize: 13, color: pred.color, fontWeight: 600 }}>
-                        Pool {pred.pool}: {pred.text}
+                    <div key={pred.pool} style={{ marginBottom: 10 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                        <span style={{ fontFamily: 'var(--font-ui)', fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500 }}>{pred.pool}</span>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: pred.color, fontWeight: 600 }}>{pred.text}</span>
                       </div>
-                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
-                        Avg write rate ({INTERVALS.find(i => i.key === interval)?.label ?? interval}): {pred.rate}
+                      <div style={{ fontFamily: 'var(--font-ui)', fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                        Ø {pred.rate} GB/day · {pred.windowLabel}
                       </div>
                     </div>
                   ))}
