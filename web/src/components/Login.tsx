@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { HardDrive, Lock, ArrowRight, AlertCircle, Wifi, WifiOff } from 'lucide-react';
 
 interface LoginProps {
