@@ -765,12 +765,6 @@ export default function Dashboard({
                     </div>
                   </div>
                 )}
-                {uptime !== '—' && (
-                  <div style={{ paddingTop: 10, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)' }}>Uptime</span>
-                    <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>{uptime}</span>
-                  </div>
-                )}
               </div>
             </Panel>
           </div>
