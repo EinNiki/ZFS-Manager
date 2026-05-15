@@ -149,14 +149,6 @@ async fn change_password(
         }).await.unwrap_or(false);
     }
 
-    // Fall back to env var
-    if !verified {
-        let api_key = std::env::var("ZFS_API_KEY").unwrap_or_default();
-        if !api_key.is_empty() && body.current_password == api_key {
-            verified = true;
-        }
-    }
-
     if !verified {
         return Err(ApiError::BadRequest("Current password is incorrect".into()));
     }
@@ -173,6 +165,34 @@ async fn change_password(
         "UPDATE users SET password_hash = $1, is_default_password = false WHERE username = 'admin'",
         &[&new_hash],
     ).await.map_err(|e| ApiError::InternalError(format!("DB error: {e}")))?;
+
+    // Invalidate all sessions so every active browser session must re-login
+    pg.execute("DELETE FROM sessions", &[])
+        .await
+        .map_err(|e| ApiError::InternalError(format!("DB error: {e}")))?;
+
+    // Purge session cache from Redis so cached sessions can't bypass the DB check
+    if let Some(ref redis_conn) = state.redis {
+        use redis::AsyncCommands;
+        let mut conn = redis_conn.clone();
+        let mut cursor = 0u64;
+        loop {
+            let (next_cursor, keys): (u64, Vec<String>) = redis::cmd("SCAN")
+                .arg(cursor)
+                .arg("MATCH")
+                .arg("zfs:session:*")
+                .arg("COUNT")
+                .arg(100u64)
+                .query_async(&mut conn)
+                .await
+                .unwrap_or((0, vec![]));
+            if !keys.is_empty() {
+                let _: redis::RedisResult<()> = conn.del(keys).await;
+            }
+            cursor = next_cursor;
+            if cursor == 0 { break; }
+        }
+    }
 
     Ok(Json(json!({ "ok": true })))
 }

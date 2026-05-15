@@ -60,8 +60,6 @@ async fn auth_middleware(
         return Ok(next.run(req).await);
     }
 
-    let api_key = std::env::var("ZFS_API_KEY").unwrap_or_default();
-
     let token_opt = req.headers()
         .get("x-api-key")
         .or_else(|| req.headers().get("Authorization"))
@@ -120,10 +118,6 @@ async fn auth_middleware(
             }
         }
 
-        // Backward compat: plaintext env var check
-        if !api_key.is_empty() && token == &api_key {
-            return Ok(next.run(req).await);
-        }
     }
 
     if !UI_FIRST_CONTACT.load(Ordering::Relaxed) {

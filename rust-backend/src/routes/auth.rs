@@ -71,16 +71,10 @@ async fn login(
         attempts.push(now);
     }
 
-    let api_key = std::env::var("ZFS_API_KEY").unwrap_or_default();
-    // ADMIN_PASSWORD is the login-form password; ZFS_API_KEY is for API bearer-token auth
-    let admin_password_env = {
-        let v = std::env::var("ADMIN_PASSWORD").unwrap_or_default();
-        if v.is_empty() { "admin123".to_string() } else { v }
-    };
     let mut authenticated = false;
     let mut is_default_password = false;
 
-    // Check DB users table first
+    // Authenticate only via the database — never via environment variables
     if let Some(ref pg) = state.pg {
         let result = pg.query_opt(
             "SELECT password_hash, is_default_password FROM users WHERE username = 'admin'",
@@ -99,21 +93,6 @@ async fn login(
                 authenticated = true;
                 is_default_password = is_default;
             }
-        }
-    }
-
-    // Fall back to env var check: ADMIN_PASSWORD for the login form, ZFS_API_KEY for backward compat
-    if !authenticated {
-        let env_pw = if !admin_password_env.is_empty() {
-            admin_password_env.as_str()
-        } else if !api_key.is_empty() {
-            api_key.as_str()
-        } else {
-            ""
-        };
-        if !env_pw.is_empty() && body.password == env_pw {
-            authenticated = true;
-            is_default_password = env_pw == "admin123";
         }
     }
 
