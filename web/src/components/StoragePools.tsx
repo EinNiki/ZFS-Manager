@@ -85,7 +85,11 @@ function Toast({ msg, type, onClose }: { msg: string; type: 'success' | 'error';
 }
 
 /* ── Device Picker ────────────────────────────────────────────────────────────── */
-function DevicePicker({ onSelect, onClose }: { onSelect: (path: string) => void; onClose: () => void }) {
+function DevicePicker({ onSelect, onClose, usedDisks = new Set<string>() }: {
+  onSelect: (path: string) => void;
+  onClose: () => void;
+  usedDisks?: Set<string>;
+}) {
   const [disks, setDisks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -117,23 +121,40 @@ function DevicePicker({ onSelect, onClose }: { onSelect: (path: string) => void;
           <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 12, padding: '24px 0' }}>No block devices found</p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {disks.map((disk, i) => (
-              <button key={i} onClick={() => { onSelect(`/dev/${disk.name}`); onClose(); }} style={{
-                display: 'flex', alignItems: 'center', gap: 14, padding: '10px 14px',
-                background: 'var(--bg-elevated)', border: '1px solid var(--border)',
-                borderRadius: 'var(--radius)', cursor: 'pointer', textAlign: 'left', transition: 'all 0.12s',
-              }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)'; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border)'; }}
-              >
-                <HardDrive size={16} style={{ color: 'var(--info)', flexShrink: 0 }} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--text-primary)', fontWeight: 600 }}>/dev/{disk.name}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{disk.model || ''} {disk.rota ? 'HDD' : 'SSD'}</div>
-                </div>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--info)', fontWeight: 600 }}>{formatBytes(disk.size, 1)}</span>
-              </button>
-            ))}
+            {disks.map((disk, i) => {
+              const path = `/dev/${disk.name}`;
+              const inUse = usedDisks.has(path);
+              return (
+                <button
+                  key={i}
+                  onClick={() => { if (!inUse) { onSelect(path); onClose(); } }}
+                  disabled={inUse}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 14, padding: '10px 14px',
+                    background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius)', cursor: inUse ? 'not-allowed' : 'pointer',
+                    textAlign: 'left', transition: 'all 0.12s',
+                    opacity: inUse ? 0.5 : 1,
+                  }}
+                  onMouseEnter={e => { if (!inUse) (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)'; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border)'; }}
+                >
+                  <HardDrive size={16} style={{ color: inUse ? 'var(--text-muted)' : 'var(--info)', flexShrink: 0 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--text-primary)', fontWeight: 600 }}>{path}</span>
+                      {inUse && (
+                        <span style={{ fontSize: 10, color: 'var(--text-muted)', background: 'var(--bg-base)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 6px', whiteSpace: 'nowrap' }}>
+                          In use
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{disk.model || ''} {disk.rota ? 'HDD' : 'SSD'}</div>
+                  </div>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: inUse ? 'var(--text-muted)' : 'var(--info)', fontWeight: 600 }}>{formatBytes(disk.size, 1)}</span>
+                </button>
+              );
+            })}
           </div>
         )}
       </div>
@@ -207,9 +228,10 @@ function SmartModal({ device, onClose }: { device: string; onClose: () => void }
 }
 
 /* ── Replace Disk Modal ───────────────────────────────────────────────────────── */
-function ReplaceDiskModal({ poolName, poolDisks, preselectedDisk, onClose, onSuccess }: {
+function ReplaceDiskModal({ poolName, poolDisks, preselectedDisk, onClose, onSuccess, usedDisks = new Set<string>() }: {
   poolName: string; poolDisks: { path: string; state: string }[];
   preselectedDisk?: string; onClose: () => void; onSuccess: () => void;
+  usedDisks?: Set<string>;
 }) {
   const [selectedOld, setSelectedOld] = useState(preselectedDisk || '');
   const [newDisk, setNewDisk]         = useState('');
@@ -230,7 +252,7 @@ function ReplaceDiskModal({ poolName, poolDisks, preselectedDisk, onClose, onSuc
 
   return (
     <>
-      {showPicker && <DevicePicker onSelect={p => { setNewDisk(p); setShowPicker(false); }} onClose={() => setShowPicker(false)} />}
+      {showPicker && <DevicePicker onSelect={p => { setNewDisk(p); setShowPicker(false); }} onClose={() => setShowPicker(false)} usedDisks={usedDisks} />}
       <div style={S.modal.overlay} onClick={onClose}>
         <div style={S.modal.box} onClick={e => e.stopPropagation()}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
@@ -396,9 +418,10 @@ function ImportPoolModal({ onClose, onSuccess }: { onClose: () => void; onSucces
 }
 
 /* ── Expand Pool Modal ────────────────────────────────────────────────────────── */
-function ExpandPoolModal({ poolName, poolDisks, onClose, onSuccess }: {
+function ExpandPoolModal({ poolName, poolDisks, onClose, onSuccess, usedDisks = new Set<string>() }: {
   poolName: string; poolDisks: { path: string; state: string }[];
   onClose: () => void; onSuccess: () => void;
+  usedDisks?: Set<string>;
 }) {
   const [selected, setSelected] = useState('');
   const [expanding, setExpanding] = useState(false);
@@ -457,7 +480,7 @@ function ExpandPoolModal({ poolName, poolDisks, onClose, onSuccess }: {
 }
 
 /* ── Create Pool Modal ────────────────────────────────────────────────────────── */
-function CreatePoolModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (name: string) => void }) {
+function CreatePoolModal({ onClose, onSuccess, usedDisks = new Set<string>() }: { onClose: () => void; onSuccess: (name: string) => void; usedDisks?: Set<string> }) {
   const [poolName, setPoolName] = useState('');
   const [vdevType, setVdevType] = useState<VdevType>('mirror');
   const [devices, setDevices]   = useState<string[]>(['', '']);
@@ -508,6 +531,7 @@ function CreatePoolModal({ onClose, onSuccess }: { onClose: () => void; onSucces
         <DevicePicker
           onSelect={path => { handlePickerSelect(path); setShowPicker(false); }}
           onClose={() => setShowPicker(false)}
+          usedDisks={usedDisks}
         />
       )}
       <div style={S.modal.overlay} onClick={onClose}>
@@ -520,7 +544,7 @@ function CreatePoolModal({ onClose, onSuccess }: { onClose: () => void; onSucces
           <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
             <div>
               <label style={S.modal.label}>Pool Name</label>
-              <input style={S.modal.input} type="text" placeholder="e.g. tank, storage, data" value={poolName} onChange={e => setPoolName(e.target.value.replace(/[^a-zA-Z0-9_\-:.]/g, ''))} />
+              <input style={S.modal.input} type="text" placeholder="e.g. tank, storage, data" value={poolName} onChange={e => setPoolName(e.target.replace(/[^a-zA-Z0-9_\-:.]/g, ''))} />
             </div>
 
             <div>
@@ -717,6 +741,12 @@ export default function StoragePools({ pools, onRefresh, zfsVersion }: StoragePo
     return vdevs.flatMap((v: any) => v.disks || []);
   };
 
+  // Set of all disk paths currently in use by any pool
+  const usedDisksSet = new Set<string>(
+    Object.values(poolVdevs)
+      .flatMap((vdevs: any) => (vdevs || []).flatMap((v: any) => (v.disks || []).map((d: any) => d.path || d)))
+  );
+
   const startScrubPolling = (poolName: string) => {
     if (pollTimers.current[poolName]) return;
     pollTimers.current[poolName] = setInterval(async () => {
@@ -793,6 +823,7 @@ export default function StoragePools({ pools, onRefresh, zfsVersion }: StoragePo
         <CreatePoolModal
           onClose={() => setShowCreate(false)}
           onSuccess={name => { setShowCreate(false); showToast(`Pool "${name}" created`, 'success'); onRefresh(); }}
+          usedDisks={usedDisksSet}
         />
       )}
       {showImport && (
@@ -807,6 +838,7 @@ export default function StoragePools({ pools, onRefresh, zfsVersion }: StoragePo
           poolDisks={getPoolDisks(expandTarget)}
           onClose={() => setExpandTarget(null)}
           onSuccess={() => { showToast(`Pool "${expandTarget}" expanded`, 'success'); setExpandTarget(null); onRefresh(); }}
+          usedDisks={usedDisksSet}
         />
       )}
       {replaceTarget && (
@@ -816,6 +848,7 @@ export default function StoragePools({ pools, onRefresh, zfsVersion }: StoragePo
           preselectedDisk={replaceTarget.preselectedDisk}
           onClose={() => setReplaceTarget(null)}
           onSuccess={() => { showToast('Disk replacement started', 'success'); setReplaceTarget(null); onRefresh(); }}
+          usedDisks={usedDisksSet}
         />
       )}
       {smartTarget && <SmartModal device={smartTarget} onClose={() => setSmartTarget(null)} />}

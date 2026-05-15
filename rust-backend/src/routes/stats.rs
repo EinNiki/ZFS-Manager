@@ -1,12 +1,25 @@
-use axum::{extract::Path, routing::get, Json, Router};
+use axum::{extract::{Path, State}, routing::get, Json, Router};
+use redis::AsyncCommands;
 use serde_json::{json, Value};
-use crate::error::ApiError;
+use tracing::warn;
 
-pub fn router() -> Router {
+use crate::error::ApiError;
+use crate::state::AppState;
+
+pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/api/v1/stats/system", get(get_system_stats))
         .route("/api/v1/system/disks", get(list_disks))
         .route("/api/v1/system/smart/:device", get(get_smart_data))
+        .route("/api/v1/time", get(get_server_time))
+        .with_state(state)
+}
+
+async fn get_server_time() -> Json<Value> {
+    Json(json!({
+        "now": chrono::Utc::now().to_rfc3339(),
+        "timezone": "UTC",
+    }))
 }
 
 fn parse_arc_stats(raw: &str) -> (f64, i64, i64, i64, i64) {
@@ -38,7 +51,7 @@ fn parse_arc_stats(raw: &str) -> (f64, i64, i64, i64, i64) {
 }
 
 fn parse_loadavg(raw: &str) -> [f64; 3] {
-    let parts: Vec<&str> = raw.trim().split_whitespace().collect();
+    let parts: Vec<&str> = raw.split_whitespace().collect();
     [
         parts.first().and_then(|s| s.parse().ok()).unwrap_or(0.0),
         parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(0.0),
@@ -84,7 +97,18 @@ fn read_cpu_jiffies() -> (u64, u64) {
     (0, 0)
 }
 
-async fn get_system_stats() -> Result<Json<Value>, ApiError> {
+async fn get_system_stats(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
+    // Check Redis cache first (TTL 3s)
+    if let Some(ref redis_conn) = state.redis {
+        let mut conn = redis_conn.clone();
+        let cached: redis::RedisResult<Option<String>> = conn.get("zfs:system-stats").await;
+        if let Ok(Some(hit)) = cached {
+            if let Ok(val) = serde_json::from_str::<Value>(&hit) {
+                return Ok(Json(val));
+            }
+        }
+    }
+
     let (t1, i1) = read_cpu_jiffies();
     tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
     let (t2, i2) = read_cpu_jiffies();
@@ -136,7 +160,7 @@ async fn get_system_stats() -> Result<Json<Value>, ApiError> {
         })
         .unwrap_or_else(|_| "unavailable".to_string());
 
-    Ok(Json(json!({
+    let result = json!({
         "uptime":         uptime_formatted,
         "uptime_secs":    uptime_secs,
         "timestamp":      chrono::Utc::now().to_rfc3339(),
@@ -154,22 +178,61 @@ async fn get_system_stats() -> Result<Json<Value>, ApiError> {
             "available": mem_available,
             "used":      mem_total - mem_available
         }
-    })))
+    });
+
+    // Cache in Redis with 3s TTL
+    if let Some(ref redis_conn) = state.redis {
+        let mut conn = redis_conn.clone();
+        if let Ok(json_str) = serde_json::to_string(&result) {
+            let _: redis::RedisResult<()> = conn.set_ex("zfs:system-stats", json_str, 3u64).await;
+        }
+    }
+
+    Ok(Json(result))
 }
 
-async fn get_smart_data(Path(device): Path<String>) -> Result<Json<Value>, ApiError> {
+async fn get_smart_data(
+    State(state): State<AppState>,
+    Path(device): Path<String>,
+) -> Result<Json<Value>, ApiError> {
     let dev_path = if device.starts_with('/') { device.clone() } else { format!("/dev/{}", device) };
+    let cache_key = format!("zfs:smart:{}", device.replace('/', "_"));
+
+    // Check Redis cache (TTL 60s)
+    if let Some(ref redis_conn) = state.redis {
+        let mut conn = redis_conn.clone();
+        let cached: redis::RedisResult<Option<String>> = conn.get(&cache_key).await;
+        if let Ok(Some(hit)) = cached {
+            if let Ok(val) = serde_json::from_str::<Value>(&hit) {
+                return Ok(Json(val));
+            }
+        }
+    }
+
     let output = tokio::process::Command::new("smartctl")
         .args(["-H", "-A", "--json=c", &dev_path])
         .output()
         .await
         .map_err(|e| ApiError::InternalError(e.to_string()))?;
     let json_str = String::from_utf8_lossy(&output.stdout);
-    if let Ok(parsed) = serde_json::from_str::<Value>(&json_str) {
-        Ok(Json(parsed))
+    let result = if let Ok(parsed) = serde_json::from_str::<Value>(&json_str) {
+        parsed
     } else {
-        Ok(Json(json!({ "smart_status": { "passed": null }, "message": "No SMART data available" })))
+        json!({ "smart_status": { "passed": null }, "message": "No SMART data available" })
+    };
+
+    // Cache in Redis with 60s TTL
+    if let Some(ref redis_conn) = state.redis {
+        let mut conn = redis_conn.clone();
+        if let Ok(json_str) = serde_json::to_string(&result) {
+            let set_result: redis::RedisResult<()> = conn.set_ex(&cache_key, json_str, 60u64).await;
+            if let Err(e) = set_result {
+                warn!("Redis SET failed for {cache_key}: {e}");
+            }
+        }
     }
+
+    Ok(Json(result))
 }
 
 async fn list_disks() -> Result<Json<Value>, ApiError> {

@@ -47,25 +47,6 @@ function useCounter(target: number, duration = 600) {
   return val;
 }
 
-/* ── Days until full (global estimate) ── */
-function computeDaysUntilFull(stats: any[]): number | null {
-  if (stats.length < 5) return null;
-  const allocs = stats.map(s => s.alloc as number);
-  const n      = allocs.length;
-  const xMean  = (n - 1) / 2;
-  const yMean  = allocs.reduce((a, b) => a + b, 0) / n;
-  let num = 0, den = 0;
-  for (let i = 0; i < n; i++) {
-    num += (i - xMean) * (allocs[i] - yMean);
-    den += (i - xMean) ** 2;
-  }
-  if (den === 0 || num / den <= 0.0001) return null;
-  const slope  = num / den;
-  const freeGB = stats[n - 1]?.free ?? 0;
-  if (freeGB <= 0 || slope <= 0) return null;
-  return freeGB / (slope * 17280);
-}
-
 function fmtDays(d: number): string {
   if (d < 14)  return `~${Math.round(d)} days`;
   if (d < 90)  return `~${Math.round(d / 7)} weeks`;
@@ -73,16 +54,61 @@ function fmtDays(d: number): string {
   return `~${(d / 365).toFixed(1)} yrs`;
 }
 
-function computeFillInfo(hist7d: any[], freeGB: number): { text: string; color: string } {
-  if (hist7d.length < 3) return { text: 'Insufficient data', color: 'var(--text-muted)' };
-  const avgWriteMb   = hist7d.reduce((s, d) => s + (d.write || 0), 0) / hist7d.length;
-  const dailyWriteGB = avgWriteMb * 86400 / 1024;
-  if (dailyWriteGB < 0.001 || freeGB <= 0) return { text: 'No fill risk', color: 'var(--success)' };
-  const days = freeGB / dailyWriteGB;
-  if (days > 730) return { text: 'No fill risk', color: 'var(--success)' };
-  if (days >= 90)  return { text: `Full in ~${Math.round(days / 30)} months`, color: 'var(--text-secondary)' };
-  if (days >= 14)  return { text: `Full in ~${Math.round(days / 7)} weeks`,   color: 'var(--warning)' };
-  return { text: `Full in ~${Math.round(days)} days`, color: 'var(--danger)' };
+function computeFillDate(dailyGB: number, freeGB: number): { text: string; color: string } {
+  if (dailyGB < 0.001 || freeGB <= 0) return { text: '–', color: 'var(--text-muted)' };
+  const days = freeGB / dailyGB;
+  if (days > 730) return { text: '–', color: 'var(--text-muted)' };
+  const fillDate = new Date();
+  fillDate.setDate(fillDate.getDate() + Math.round(days));
+  const dd   = String(fillDate.getDate()).padStart(2, '0');
+  const mm   = String(fillDate.getMonth() + 1).padStart(2, '0');
+  const yyyy = fillDate.getFullYear();
+  const dateStr = `${dd}.${mm}.${yyyy}`;
+  if (days < 14) return { text: dateStr, color: 'var(--danger)' };
+  if (days < 90) return { text: dateStr, color: 'var(--warning)' };
+  return { text: dateStr, color: 'var(--text-secondary)' };
+}
+
+// Fix #7 — real time-until-full from DB history
+function useFillPrediction(freeBytes: number) {
+  const [prediction, setPrediction] = React.useState<{
+    text: string; color: string; windowLabel: string;
+  } | null>(null);
+  const loaded = React.useRef(false);
+
+  React.useEffect(() => {
+    if (loaded.current || freeBytes <= 0) return;
+    loaded.current = true;
+
+    const freeGB = freeBytes / 1e9;
+    const windows = [
+      { api: '1m', label: 'last 30d' },
+      { api: '1w', label: 'last 7d' },
+      { api: '1d', label: 'last 24h' },
+      { api: '1h', label: 'last 1h' },
+    ];
+
+    (async () => {
+      for (const w of windows) {
+        try {
+          const res = await api.getMetricsHistory(w.api);
+          const metrics: any[] = res.metrics || [];
+          if (metrics.length < 2) continue;
+
+          const avgWriteMb = metrics.reduce((s: number, m: any) => s + (m.write_bw_mb || 0), 0) / metrics.length;
+          const dailyGB    = avgWriteMb * 86400 / 1024;
+          const { text, color } = computeFillDate(dailyGB, freeGB);
+          const rateStr = dailyGB < 0.001 ? '0' : dailyGB < 1 ? dailyGB.toFixed(2) : dailyGB.toFixed(1);
+
+          setPrediction({ text, color, windowLabel: `Ø ${rateStr} GB/day · ${w.label}` });
+          return;
+        } catch { /* try next */ }
+      }
+      setPrediction({ text: '–', color: 'var(--text-muted)', windowLabel: '' });
+    })();
+  }, [freeBytes]);
+
+  return prediction;
 }
 
 /* ── Chart config ── */
@@ -94,8 +120,10 @@ const TOOLTIP_STYLE = {
   },
   labelStyle: { color: '#71717a', fontSize: 10 },
 };
-const AXIS_TICK  = { fill: '#52525b', fontSize: 10 };
-const GRID_PROPS = { strokeDasharray: '1 6' as const, stroke: 'rgba(255,255,255,0.04)', vertical: false };
+const AXIS_TICK   = { fill: '#52525b', fontSize: 10 };
+const GRID_PROPS  = { strokeDasharray: '1 6' as const, stroke: 'rgba(255,255,255,0.04)', vertical: false };
+const CHART_MARGIN = { top: 24, right: 8, left: 16, bottom: 8 };
+const MAX_TICKS    = 6;
 
 /* ── Capacity warning banner ── */
 function CapacityBanner({ pool, daysUntilFull }: { pool: ZFSPool; daysUntilFull: number | null }) {
@@ -133,38 +161,51 @@ function CapacityBanner({ pool, daysUntilFull }: { pool: ZFSPool; daysUntilFull:
 }
 
 /* ── Stat card ── */
-function StatCard({ label, value, sub, fillLine, icon: Icon, color }: {
+function StatCard({ label, value, sub, fillLine, icon: Icon, color, minHeight = 130 }: {
   label: string; value: string; sub?: string;
-  fillLine?: { text: string; color: string };
-  icon: any; color?: string;
+  fillLine?: { text: string; color: string; sub?: string };
+  icon: any; color?: string; minHeight?: number;
 }) {
   const c = color || 'var(--accent)';
   return (
-    <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '20px 22px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 14 }}>
-        <span style={{ fontFamily: 'var(--font-ui)', fontSize: 11, fontWeight: 500, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+    <div style={{
+      background: 'var(--bg-surface)', border: '1px solid var(--border)',
+      borderRadius: 'var(--radius-lg)', minHeight, position: 'relative',
+    }}>
+      <div style={{
+        position: 'absolute', top: 12, right: 12,
+        width: 28, height: 28,
+        background: `color-mix(in srgb, ${c} 12%, transparent)`,
+        border: `1px solid color-mix(in srgb, ${c} 25%, transparent)`,
+        borderRadius: 'var(--radius)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        <Icon size={14} color={c} strokeWidth={1.75} />
+      </div>
+      <div style={{
+        display: 'flex', flexDirection: 'column',
+        justifyContent: 'center', alignItems: 'flex-start',
+        height: '100%', padding: '0 20px',
+      }}>
+        <span style={{ fontFamily: 'var(--font-ui)', fontSize: 11, fontWeight: 500, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
           {label}
         </span>
-        <div style={{
-          width: 30, height: 30, flexShrink: 0,
-          background: `color-mix(in srgb, ${c} 12%, transparent)`,
-          border: `1px solid color-mix(in srgb, ${c} 25%, transparent)`,
-          borderRadius: 'var(--radius)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <Icon size={14} color={c} strokeWidth={1.75} />
-        </div>
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 26, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1, letterSpacing: '-0.02em' }}>
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 28, fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1, letterSpacing: '-0.02em', margin: 0, marginTop: 4 }}>
           {value}
         </div>
         {fillLine && (
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: fillLine.color, marginTop: 6, fontWeight: 500 }}>
-            {fillLine.text}
-          </div>
+          <>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: fillLine.color, marginTop: 3, fontWeight: 500 }}>
+              {fillLine.text}
+            </div>
+            {fillLine.sub && (
+              <div style={{ fontFamily: 'var(--font-ui)', fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                {fillLine.sub}
+              </div>
+            )}
+          </>
         )}
-        {sub && <div style={{ fontFamily: 'var(--font-ui)', fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>{sub}</div>}
+        {sub && <div style={{ fontFamily: 'var(--font-ui)', fontSize: 12, color: 'var(--text-muted)', marginTop: fillLine ? 2 : 3 }}>{sub}</div>}
       </div>
     </div>
   );
@@ -515,7 +556,10 @@ export default function Dashboard({
   const uptime   = systemStats?.uptime ?? '—';
   const allOnline = pools.length > 0 && pools.every(p => p.health === 'ONLINE');
   const freeBytes = totalCapacity - totalUsedStorage;
-  const daysUntilFull = computeDaysUntilFull(historicalStats);
+
+  // Fix #7 — real time-until-full prediction fetched from DB on page load
+  const fillPrediction = useFillPrediction(freeBytes);
+  const daysUntilFull  = null; // legacy, kept for capacity banner only
 
   useEffect(() => {
     api.getMetricsHistory('1d').then(res => {
@@ -580,7 +624,7 @@ export default function Dashboard({
     switch (id) {
       case 'stats-row':
         return (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, alignItems: 'stretch' }}>
             <StatCard
               label="Total Storage"
               value={formatBytes(totalCapacity, 1)}
@@ -607,11 +651,16 @@ export default function Dashboard({
             <StatCard
               label="Available Space"
               value={formatBytes(freeBytes, 1)}
-              fillLine={computeFillInfo(histData7d, freeBytes / 1e9)}
-              sub={`${(100 - usagePct).toFixed(1)}% free`}
+              fillLine={fillPrediction
+                ? { text: fillPrediction.text, color: fillPrediction.color, sub: fillPrediction.windowLabel }
+                : undefined}
+              sub={`${((totalCapacity - totalUsedStorage) / totalCapacity * 100).toFixed(1)}% free`}
               icon={TrendingUp}
-              color={daysUntilFull !== null && daysUntilFull < 14 ? 'var(--danger)'
-                : daysUntilFull !== null && daysUntilFull < 30 ? 'var(--warning)' : 'var(--success)'}
+              minHeight={140}
+              color={
+                fillPrediction?.color === 'var(--danger)'  ? 'var(--danger)'  :
+                fillPrediction?.color === 'var(--warning)' ? 'var(--warning)' : 'var(--success)'
+              }
             />
           </div>
         );
@@ -635,14 +684,24 @@ export default function Dashboard({
             <div style={{ padding: '16px 20px' }}>
               {ioData.length > 1 ? (
                 <>
-                  <div style={{ height: 180 }}>
+                  <div style={{ height: 180, marginLeft: 8, overflow: 'visible' }}>
                     <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={ioData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+                      <LineChart data={ioData} margin={CHART_MARGIN}>
                         <CartesianGrid {...GRID_PROPS} />
                         <XAxis dataKey="timestamp" axisLine={false} tickLine={false} tick={AXIS_TICK} minTickGap={48} />
                         <YAxis axisLine={false} tickLine={false} tick={AXIS_TICK}
-                          tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(1)}G/s` : `${v.toFixed(0)}M/s`}
-                          width={50} />
+                          tickFormatter={v => {
+                            const maxV = ioData.reduce((m: number, d: any) => Math.max(m, d.read || 0, d.write || 0), 0);
+                            return maxV >= 1000 ? `${(v/1000).toFixed(1)}` : `${v.toFixed(0)}`;
+                          }}
+                          tickCount={MAX_TICKS}
+                          width={60}
+                          label={{
+                            value: ioData.reduce((m: number, d: any) => Math.max(m, d.read||0, d.write||0), 0) >= 1000 ? 'GB/s' : 'MB/s',
+                            angle: -90, position: 'insideLeft', offset: 4,
+                            style: { fill: '#52525b', fontSize: 9, textAnchor: 'middle' }
+                          }}
+                        />
                         <Tooltip {...TOOLTIP_STYLE} formatter={(v: number, n: string) => [
                           v >= 1000 ? `${(v/1000).toFixed(2)} GB/s` : `${v.toFixed(2)} MB/s`,
                           n === 'read' ? '↑ Read' : '↓ Write',

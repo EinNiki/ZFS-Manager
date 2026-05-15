@@ -27,3 +27,5 @@ Thumbs.db
 volumes/
 postgres_data/
 redis_data/
+data/redis/
+data/postgres/

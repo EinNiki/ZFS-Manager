@@ -1,3 +1,4 @@
+pub mod auth;
 pub mod clones;
 pub mod datasets;
 pub mod health;
@@ -5,6 +6,7 @@ pub mod layout;
 pub mod metrics;
 pub mod pools;
 pub mod properties;
+pub mod settings;
 pub mod snapshots;
 pub mod stats;
 pub mod volumes;

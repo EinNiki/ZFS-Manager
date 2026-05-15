@@ -36,7 +36,7 @@ function Modal({ title, onClose, children, maxWidth = 440 }: {
         initial={{ scale: 0.94, y: 16 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.94 }}
         transition={{ duration: 0.22, ease: 'easeOut' }}
         className="card"
-        style={{ width: '100%', maxWidth, padding: 28, overflowY: 'auto', maxHeight: '90vh' }}
+        style={{ width: '100%', maxWidth, padding: 28, borderRadius: 14, boxShadow: '0 8px 40px rgba(0,0,0,0.4)', overflowY: 'auto', maxHeight: '90vh' }}
         onClick={e => e.stopPropagation()}
       >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
@@ -114,7 +114,14 @@ const fieldInput: React.CSSProperties = {
 };
 
 const fieldSelect: React.CSSProperties = {
-  ...fieldInput, cursor: 'pointer', fontFamily: 'var(--font-ui)',
+  ...fieldInput,
+  cursor: 'pointer',
+  fontFamily: 'var(--font-ui)',
+  appearance: 'none',
+  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
+  backgroundRepeat: 'no-repeat',
+  backgroundPosition: 'right 12px center',
+  paddingRight: 36,
 };
 
 function PropertiesModal({ dataset, onClose, onSaved }: {
@@ -783,19 +790,15 @@ export default function DatasetList({ datasets, volumes = [], pools, onRefresh }
                   {[{ label: 'Size', value: v.volsize }, { label: 'Used', value: v.used }].map(({ label, value }) => (
                     <div key={label}>
                       <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: 'var(--font-ui)', marginBottom: 2 }}>{label}</div>
-                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{value}</div>
+                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>{value}</div>
                     </div>
                   ))}
                 </div>
-                <div className="row-actions" style={{ opacity: 0 }}>
-                  <button
-                    onClick={() => handleRewrite(v.name)}
-                    className="btn btn-secondary"
-                    style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}
-                  >
-                    <RotateCcw size={11} />
-                    Rewrite
-                  </button>
+                <div className="progress-track" style={{ height: 4, marginBottom: 4 }}>
+                  <div className="progress-fill" style={{
+                    width: `${Math.min((parseFloat(v.used) / parseFloat(v.volsize)) * 100, 100) || 0}%`,
+                    background: 'var(--info)'
+                  }} />
                 </div>
               </motion.div>
             ))}

@@ -13,6 +13,7 @@ use crate::state::AppState;
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/api/v1/metrics/history", get(get_metrics_history))
+        .route("/api/v1/metrics/live",    get(get_live_metrics))
         .with_state(state)
 }
 
@@ -175,4 +176,55 @@ async fn get_metrics_history(
     }
 
     Json(result)
+}
+
+async fn get_live_metrics(
+    State(state): State<AppState>,
+) -> Json<Value> {
+    let mut cpu_percent    = 0.0f64;
+    let mut arc_hit_ratio  = 0.0f64;
+    let mut total_read_mb  = 0.0f64;
+    let mut total_write_mb = 0.0f64;
+    let mut read_bw_mb     = 0.0f64;
+    let mut write_bw_mb    = 0.0f64;
+    let mut read_iops      = 0.0f64;
+    let mut write_iops     = 0.0f64;
+
+    if let Some(ref redis_conn) = state.redis {
+        let mut conn = redis_conn.clone();
+
+        // Fast 500ms loop: cpu, arc, cumulative totals
+        let snapshot: redis::RedisResult<Option<String>> = conn.get("zfs:live:snapshot").await;
+        if let Ok(Some(hit)) = snapshot {
+            if let Ok(val) = serde_json::from_str::<Value>(&hit) {
+                cpu_percent    = val["cpu_percent"].as_f64().unwrap_or(0.0);
+                arc_hit_ratio  = val["arc_hit_ratio"].as_f64().unwrap_or(0.0);
+                total_read_mb  = val["total_read_mb"].as_f64().unwrap_or(0.0);
+                total_write_mb = val["total_write_mb"].as_f64().unwrap_or(0.0);
+            }
+        }
+
+        // Slow 5s loop: instantaneous IO throughput
+        let latest: redis::RedisResult<Option<String>> = conn.get("zfs:metrics:latest").await;
+        if let Ok(Some(hit)) = latest {
+            if let Ok(val) = serde_json::from_str::<Value>(&hit) {
+                read_bw_mb  = val["read_bw_mb"].as_f64().unwrap_or(0.0);
+                write_bw_mb = val["write_bw_mb"].as_f64().unwrap_or(0.0);
+                let iops    = val["iops"].as_f64().unwrap_or(0.0);
+                read_iops   = iops / 2.0;
+                write_iops  = iops / 2.0;
+            }
+        }
+    }
+
+    Json(json!({
+        "cpu_percent":    cpu_percent,
+        "arc_hit_ratio":  arc_hit_ratio,
+        "total_read_mb":  total_read_mb,
+        "total_write_mb": total_write_mb,
+        "read_bw_mb":     read_bw_mb,
+        "write_bw_mb":    write_bw_mb,
+        "read_iops":      read_iops,
+        "write_iops":     write_iops,
+    }))
 }

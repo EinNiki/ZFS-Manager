@@ -9,6 +9,7 @@ import DatasetList from './components/DatasetList';
 import SnapshotManager from './components/SnapshotManager';
 import SystemLogs from './components/SystemLogs';
 import Login from './components/Login';
+import Settings from './components/Settings';
 import { ZFSPool, ZFSDataset, ZFSLog } from './types';
 import { api, formatBytes, setApiKey } from './api';
 
@@ -37,6 +38,36 @@ function useBreakpoint(): Breakpoint {
     return () => window.removeEventListener('resize', h);
   }, []);
   return bp;
+}
+
+// ── Log level classifier ─────────────────────────────────────────────────────
+function classifyLogLevel(line: string): 'error' | 'warning' | 'info' {
+  const lower = line.toLowerCase();
+  // Strip timestamp prefix to get the command part
+  const cmd = line.replace(/^\d{4}-\d{2}-\d{2}\.\d{2}:\d{2}:\d{2}\s+/, '').trim().toLowerCase();
+
+  // ERROR — pool state problems and real I/O errors
+  if (lower.includes('degraded') || lower.includes('faulted') || lower.includes('unavail')) return 'error';
+  if (lower.includes('missing') && lower.includes('disk')) return 'error';
+  // Scrub finished with read or write errors (not just "0 errors")
+  if (lower.includes('scrub') && (
+    (/\b[1-9]\d* read errors?\b/i.test(line)) ||
+    (/\b[1-9]\d* write errors?\b/i.test(line))
+  )) return 'error';
+  // Generic error but NOT "0 errors" and NOT routine zfs commands
+  if (
+    lower.includes('error') &&
+    !/\b0 (read |write |data |checksum )?errors?\b/i.test(line) &&
+    !cmd.startsWith('zfs ') && !cmd.startsWith('zpool ')
+  ) return 'error';
+
+  // WARNING — needs attention but not broken
+  if (lower.includes('checksum') && !/\b0 checksum\b/i.test(line)) return 'warning';
+  if (lower.includes('resilver') || lower.includes('resilvering')) return 'warning';
+  if (lower.includes('warn')) return 'warning';
+
+  // INFO — everything else including zfs destroy, create, rename, successful scrubs
+  return 'info';
 }
 
 function TopBar({
@@ -102,6 +133,7 @@ function TopBar({
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('zfs_access_token'));
+  const [isDefaultPassword, setIsDefaultPassword] = useState(false);
   const [pools, setPools]           = useState<ZFSPool[]>([]);
   const [datasets, setDatasets]     = useState<ZFSDataset[]>([]);
   const [volumes, setVolumes]       = useState<any[]>([]);
@@ -109,6 +141,8 @@ export default function App() {
   const [totalCapacity, setTotalCapacity]       = useState(0);
   const [totalUsedStorage, setTotalUsedStorage] = useState(0);
   const [stats, setStats]           = useState<any[]>([]);
+  const [liveMetrics, setLiveMetrics] = useState<any>(null);
+  const [serverTimeOffsetMs, setServerTimeOffsetMs] = useState(0);
   const [systemStats, setSystemStats] = useState<any>(null);
   const [logs, setLogs]             = useState<ZFSLog[]>([]);
   const [loading, setLoading]       = useState(true);
@@ -146,11 +180,38 @@ export default function App() {
     breakpoint === 'tablet' ? 56 :
     sidebarCollapsed ? 56 : 220;
 
+  // ── Login: call api.login(), store token, check isDefaultPassword ──────────
   const handleLogin = async (password: string) => {
-    setApiKey(password);
-    await api.getPools();
+    const res = await api.login(password);
+    setApiKey(res.token);
+    setIsDefaultPassword(res.is_default_password);
     setIsAuthenticated(true);
   };
+
+  // ── Fetch server time once on login ──────────────────────────────────────
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    api.getServerTime().then(({ now }) => {
+      setServerTimeOffsetMs(new Date(now).getTime() - Date.now());
+    }).catch(() => {});
+  }, [isAuthenticated]);
+
+  // ── 1s live metrics loop (IO throughput cards) ────────────────────────────
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const iv = setInterval(async () => {
+      try { setLiveMetrics(await api.getLiveMetrics()); } catch { /* ignore */ }
+    }, 1000);
+    return () => clearInterval(iv);
+  }, [isAuthenticated]);
+
+  // ── Persist default-password flag across F5 ──────────────────────────────
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    api.getMe().then(res => {
+      setIsDefaultPassword(res.is_default_password);
+    }).catch(() => {});
+  }, [isAuthenticated]);
 
   const fetchData = useCallback(async () => {
     if (!isAuthenticated) return;
@@ -238,9 +299,7 @@ export default function App() {
             .map((line: string, i: number) => ({
               id: String(i),
               timestamp: line.substring(0, 19) || new Date().toISOString(),
-              level: (line.includes('destroy') || line.includes('DEGRADED') || line.includes('FAULTED') || (line.toLowerCase().includes('error') && !/\b0 errors?\b/i.test(line))) ? 'error'
-                : (line.includes('replace') || line.includes('resilver') || (line.includes('scrub') && line.toLowerCase().includes('checksum')) || line.includes('warn')) ? 'warning'
-                : 'info',
+              level: classifyLogLevel(line),
               message: line.replace(/^\d{4}-\d{2}-\d{2}\.\d{2}:\d{2}:\d{2}\s+/, '').trim(),
               pool: mappedPools[0].name,
             }))
@@ -272,7 +331,12 @@ export default function App() {
 
   if (!isAuthenticated) return <Login onLogin={handleLogin} />;
 
-  const currentStats = stats[stats.length - 1] || { read: 0, write: 0, iops: 0, readIops: 0, writeIops: 0, cpu: 0, arcHit: 0 };
+  // Merge live metrics into currentStats for real-time gauge display
+  const currentStats = {
+    ...(stats[stats.length - 1] || { read: 0, write: 0, iops: 0, readIops: 0, writeIops: 0, cpu: 0, arcHit: 0 }),
+    cpu:    liveMetrics?.cpu_percent    ?? stats[stats.length - 1]?.cpu    ?? 0,
+    arcHit: liveMetrics?.arc_hit_ratio  ?? stats[stats.length - 1]?.arcHit ?? 0,
+  };
 
   return (
     <BrowserRouter>
@@ -330,10 +394,23 @@ export default function App() {
                 background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)',
                 color: '#ef4444', display: 'flex', alignItems: 'center', gap: 12, fontSize: '0.85rem'
               }}>
-                <span style={{ fontWeight: 600 }}>📡 Connection Issue:</span>
+                <span style={{ fontWeight: 600 }}>Connection Issue:</span>
                 <span>{globalError}</span>
               </div>
             )}
+
+            {/* Default password warning banner */}
+            {isDefaultPassword && (
+              <div style={{
+                marginBottom: 24, padding: '12px 16px', borderRadius: 'var(--radius)',
+                background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.3)',
+                color: 'var(--warning)', display: 'flex', alignItems: 'center', gap: 12, fontSize: '0.85rem'
+              }}>
+                <span style={{ fontWeight: 600 }}>Security Warning:</span>
+                <span>You are using the default password. Please change it in <a href="/settings" style={{ color: 'var(--warning)', textDecoration: 'underline' }}>Settings</a>.</span>
+              </div>
+            )}
+
             <Routes>
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
               <Route path="/dashboard" element={
@@ -344,7 +421,7 @@ export default function App() {
                   systemStats={systemStats} logs={logs} loading={loading} historicalStats={stats}
                 />
               } />
-              <Route path="/stats" element={<Performance stats={stats} />} />
+              <Route path="/stats" element={<Performance stats={stats} liveMetrics={liveMetrics} serverTimeOffsetMs={serverTimeOffsetMs} />} />
               <Route path="/pools" element={
                 <StoragePools pools={pools} onRefresh={fetchData} zfsVersion={systemStats?.zfs_version} />
               } />
@@ -356,14 +433,7 @@ export default function App() {
               } />
               <Route path="/logs" element={<SystemLogs logs={logs} pools={pools} />} />
               <Route path="/settings" element={
-                <div className="card" style={{ padding: 48, textAlign: 'center' }}>
-                  <h3 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>
-                    System Configuration
-                  </h3>
-                  <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
-                    Configuration module coming soon.
-                  </p>
-                </div>
+                <Settings onPasswordChanged={() => setIsDefaultPassword(false)} />
               } />
               <Route path="/login" element={<Navigate to="/dashboard" replace />} />
             </Routes>

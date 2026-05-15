@@ -66,6 +66,5 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # For the web build, we might want to pass the default API key if needed
           build-args: |
             VITE_API_KEY=admin123

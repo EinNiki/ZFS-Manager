@@ -1,17 +1,27 @@
 const API_BASE_URL = '/api/v1';
-let API_KEY = localStorage.getItem('zfs_access_token') || import.meta.env.VITE_API_KEY || 'admin123';
+let API_KEY = localStorage.getItem('zfs_access_token') || import.meta.env.VITE_API_KEY || '';
 
 export const setApiKey = (key: string) => {
   API_KEY = key;
   localStorage.setItem('zfs_access_token', key);
 };
 
+export const clearApiKey = () => {
+  API_KEY = '';
+  localStorage.removeItem('zfs_access_token');
+};
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const headers = {
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    'X-API-Key': API_KEY,
-    ...options.headers,
+    ...(options.headers as Record<string, string> || {}),
   };
+
+  // Send token as both X-API-Key (for API keys) and Authorization Bearer (for session tokens)
+  if (API_KEY) {
+    headers['X-API-Key']     = API_KEY;
+    headers['Authorization'] = `Bearer ${API_KEY}`;
+  }
 
   try {
     const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
@@ -19,13 +29,13 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
       const errorMsg = body.error || body.message || `Request failed with status ${response.status}`;
-      console.error(`❌ API Error [${path}]:`, errorMsg);
+      console.error(`API Error [${path}]:`, errorMsg);
       throw new Error(errorMsg);
     }
 
     return response.json();
   } catch (err: any) {
-    console.error(`📡 Network Error [${path}]:`, err.message || err);
+    console.error(`Network Error [${path}]:`, err.message || err);
     throw err;
   }
 }
@@ -50,6 +60,45 @@ export const formatUnixTimestamp = (ts: string | number): string => {
 };
 
 export const api = {
+  // ── Auth ───────────────────────────────────────────────────────────────────
+  login: async (password: string): Promise<{ token: string; username: string; is_default_password: boolean }> => {
+    const res = await fetch(`${API_BASE_URL}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'admin', password }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || body.message || 'Login failed');
+    }
+    return res.json();
+  },
+
+  logout: async (): Promise<void> => {
+    await request<void>('/auth/logout', { method: 'POST' }).catch(() => {});
+    clearApiKey();
+  },
+
+  getMe: () => request<{ username: string; is_default_password: boolean }>('/auth/me'),
+
+  // ── Settings ───────────────────────────────────────────────────────────────
+  getApiKeys: () => request<{ keys: Array<{ id: number; name: string; prefix: string; created_at: string; last_used_at: string | null }> }>('/settings/api-keys'),
+
+  createApiKey: (name: string, permissions = 'read') =>
+    request<{ id: number; name: string; key: string; prefix: string }>('/settings/api-keys', {
+      method: 'POST',
+      body: JSON.stringify({ name, permissions }),
+    }),
+
+  revokeApiKey: (id: number) =>
+    request<{ message: string }>(`/settings/api-keys/${id}`, { method: 'DELETE' }),
+
+  changePassword: (current_password: string, new_password: string, confirm_password: string) =>
+    request<{ message: string }>('/settings/password', {
+      method: 'POST',
+      body: JSON.stringify({ current_password, new_password, confirm_password }),
+    }),
+
   // ── Pools ──────────────────────────────────────────────────────────────────
   getPools:            ()             => request<{ pools: any[] }>('/pools'),
   getPool:             (name: string) => request<any>(`/pools/${name}`),
@@ -110,7 +159,22 @@ export const api = {
   getDisks:       () => request<{ blockdevices: any[] }>('/system/disks'),
   getSmartData:   (device: string) => request<any>(`/system/smart/${encodeURIComponent(device)}`),
 
-  // ── Metrics History ────────────────────────────────────────────────────────
+  // ── Metrics ────────────────────────────────────────────────────────────────
   getMetricsHistory: (interval: string) =>
     request<{ metrics: any[]; interval: string; count: number }>(`/metrics/history?interval=${interval}`),
+
+  getLiveMetrics: () =>
+    request<{
+      cpu_percent: number;
+      arc_hit_ratio: number;
+      total_read_mb: number;
+      total_write_mb: number;
+      read_bw_mb: number;
+      write_bw_mb: number;
+      read_iops: number;
+      write_iops: number;
+    }>('/metrics/live'),
+
+  getServerTime: () =>
+    request<{ now: string; timezone: string }>('/time'),
 };

@@ -1,6 +1,6 @@
 use axum::{
     extract::{Path, Query},
-    routing::{delete, get, post},
+    routing::{get, post},
     Json, Router,
 };
 use serde::Deserialize;
@@ -95,6 +95,11 @@ async fn create_snapshot(Json(body): Json<CreateSnapshotBody>) -> Result<Json<Va
     if body.name.is_empty() {
         return Err(ApiError::BadRequest("'name' is required (e.g. 'tank/data@snap1')".into()));
     }
+    // Snapshot name must contain '@'
+    if !body.name.contains('@') {
+        return Err(ApiError::BadRequest("Snapshot name must contain '@' (e.g. 'tank/data@snap1')".into()));
+    }
+    executor::validate_zfs_name(&body.name, "snapshot")?;
     let mut args = vec!["snapshot"];
     if body.recursive {
         args.push("-r");
@@ -105,6 +110,7 @@ async fn create_snapshot(Json(body): Json<CreateSnapshotBody>) -> Result<Json<Va
 }
 
 async fn get_snapshot(Path(name): Path<String>) -> Result<Json<Value>, ApiError> {
+    executor::validate_zfs_name(&name, "snapshot")?;
     let raw = executor::zfs(&[
         "list", "-H", "-p", "-t", "snapshot",
         "-o", "name,used,refer,creation",
@@ -125,6 +131,7 @@ async fn get_snapshot(Path(name): Path<String>) -> Result<Json<Value>, ApiError>
 }
 
 async fn destroy_snapshot(Path(name): Path<String>) -> Result<Json<Value>, ApiError> {
+    executor::validate_zfs_name(&name, "snapshot")?;
     executor::zfs(&["destroy", &name]).await?;
     Ok(Json(json!({ "message": format!("Snapshot '{name}' destroyed") })))
 }
@@ -133,6 +140,7 @@ async fn rollback(Json(body): Json<RollbackBody>) -> Result<Json<Value>, ApiErro
     if body.name.is_empty() {
         return Err(ApiError::BadRequest("'name' is required".into()));
     }
+    executor::validate_zfs_name(&body.name, "snapshot")?;
     let mut args = vec!["rollback"];
     if body.force {
         args.push("-f");
@@ -152,7 +160,7 @@ async fn clone_snapshot(Json(body): Json<CloneBody>) -> Result<Json<Value>, ApiE
     args.push(body.target.clone());
     let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     executor::zfs(&refs).await?;
-    Ok(Json(json!({ "message": format!("Cloned '{}' → '{}'", body.name, body.target) })))
+    Ok(Json(json!({ "message": format!("Cloned '{}' -> '{}'", body.name, body.target) })))
 }
 
 async fn list_holds(Query(q): Query<NameQuery>) -> Result<Json<Value>, ApiError> {
@@ -220,7 +228,7 @@ async fn send_recv(Json(body): Json<SendRecvBody>) -> Result<Json<Value>, ApiErr
         .await?;
 
     if output.status.success() {
-        Ok(Json(json!({ "message": format!("Send/recv '{}' → '{}' completed", body.snapshot, body.destination) })))
+        Ok(Json(json!({ "message": format!("Send/recv '{}' -> '{}' completed", body.snapshot, body.destination) })))
     } else {
         Err(ApiError::CommandFailed {
             stderr: String::from_utf8_lossy(&output.stderr).to_string(),
