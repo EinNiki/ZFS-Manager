@@ -1,6 +1,6 @@
 use axum::{
     extract::{Path, Query},
-    routing::{delete, get, post},
+    routing::{get, post},
     Json, Router,
 };
 use serde::Deserialize;
@@ -94,6 +94,7 @@ async fn create_dataset(Json(body): Json<CreateDatasetBody>) -> Result<Json<Valu
     if body.name.is_empty() {
         return Err(ApiError::BadRequest("'name' is required".into()));
     }
+    executor::validate_zfs_name(&body.name, "dataset")?;
     let mut args = vec!["create".to_string()];
     args.extend(body.options);
     args.push(body.name.clone());
@@ -103,6 +104,7 @@ async fn create_dataset(Json(body): Json<CreateDatasetBody>) -> Result<Json<Valu
 }
 
 async fn get_dataset(Path(name): Path<String>) -> Result<Json<Value>, ApiError> {
+    executor::validate_zfs_name(&name, "dataset")?;
     let raw = executor::zfs(&[
         "list", "-H", "-p",
         "-o", "name,used,avail,refer,mountpoint",
@@ -127,6 +129,7 @@ async fn destroy_dataset(
     Path(name): Path<String>,
     Query(q): Query<DestroyQuery>,
 ) -> Result<Json<Value>, ApiError> {
+    executor::validate_zfs_name(&name, "dataset")?;
     // When force is requested, try to unmount first (handles busy datasets)
     if q.force {
         if q.recursive {
@@ -191,7 +194,7 @@ async fn rename_dataset(Json(body): Json<RenameBody>) -> Result<Json<Value>, Api
     args.push(body.new_name.clone());
     let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     executor::zfs(&refs).await?;
-    Ok(Json(json!({ "message": format!("Renamed '{}' → '{}'", body.name, body.new_name) })))
+    Ok(Json(json!({ "message": format!("Renamed '{}' -> '{}'", body.name, body.new_name) })))
 }
 
 async fn dataset_space(Query(q): Query<SpaceQuery>) -> Result<Json<Value>, ApiError> {

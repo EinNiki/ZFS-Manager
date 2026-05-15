@@ -94,7 +94,7 @@ fn parse_vdev_config(status_output: &str) -> Vec<Value> {
         if after_tab.trim_start().starts_with("errors:") { break; }
 
         let leading = after_tab.len() - after_tab.trim_start().len();
-        let tokens: Vec<&str> = after_tab.trim().split_whitespace().collect();
+        let tokens: Vec<&str> = after_tab.split_whitespace().collect();
         let name  = tokens.first().copied().unwrap_or("");
         let state = tokens.get(1).copied().unwrap_or("ONLINE");
 
@@ -119,10 +119,8 @@ fn parse_vdev_config(status_output: &str) -> Vec<Value> {
                     in_vdev  = true;
                 }
             }
-            4 => {
-                if in_vdev {
-                    cur_disks.push(json!({ "path": name, "state": state }));
-                }
+            4 if in_vdev => {
+                cur_disks.push(json!({ "path": name, "state": state }));
             }
             _ => {}
         }
@@ -156,9 +154,9 @@ fn parse_human_size(s: &str) -> f64 {
 
 fn parse_scan_progress(detail: &str) -> f64 {
     if let Some(oo_idx) = detail.find("scanned out of") {
-        let scanned = detail[..oo_idx].trim().split_whitespace().last().unwrap_or("0");
+        let scanned = detail[..oo_idx].split_whitespace().last().unwrap_or("0");
         let rest    = &detail[oo_idx + "scanned out of".len()..];
-        let total   = rest.trim().split_whitespace().next().unwrap_or("0");
+        let total   = rest.split_whitespace().next().unwrap_or("0");
         let s = parse_human_size(scanned);
         let t = parse_human_size(total);
         if t > 0.0 { (s / t * 100.0).min(99.5) } else { 0.0 }
@@ -238,6 +236,13 @@ async fn create_pool(Json(body): Json<CreatePoolBody>) -> Result<Json<Value>, Ap
     if body.vdevs.is_empty() {
         return Err(ApiError::BadRequest("'vdevs' must not be empty".into()));
     }
+    executor::validate_zfs_name(&body.name, "pool")?;
+    for v in &body.vdevs {
+        // vdev paths like /dev/sda are valid; skip validation for device paths
+        if !v.starts_with('/') {
+            executor::validate_zfs_name(v, "vdev")?;
+        }
+    }
     let mut args = vec!["create".to_string()];
     args.extend(body.options);
     args.push(body.name.clone());
@@ -248,6 +253,7 @@ async fn create_pool(Json(body): Json<CreatePoolBody>) -> Result<Json<Value>, Ap
 }
 
 async fn get_pool(Path(name): Path<String>) -> Result<Json<Value>, ApiError> {
+    executor::validate_zfs_name(&name, "pool")?;
     let raw = executor::zpool(&["list", "-H", "-p", "-o",
         "name,size,alloc,free,frag,cap,dedup,health,altroot", &name]).await?;
     let line = raw.lines().next()
@@ -267,22 +273,26 @@ async fn get_pool(Path(name): Path<String>) -> Result<Json<Value>, ApiError> {
 }
 
 async fn destroy_pool(Path(name): Path<String>) -> Result<Json<Value>, ApiError> {
+    executor::validate_zfs_name(&name, "pool")?;
     executor::zpool(&["destroy", &name]).await?;
     Ok(Json(json!({ "message": format!("Pool '{name}' destroyed") })))
 }
 
 async fn pool_status(Path(name): Path<String>) -> Result<Json<Value>, ApiError> {
+    executor::validate_zfs_name(&name, "pool")?;
     let raw = executor::zpool(&["status", &name]).await?;
     Ok(Json(json!({ "name": name, "status": raw })))
 }
 
 async fn pool_vdevs(Path(name): Path<String>) -> Result<Json<Value>, ApiError> {
+    executor::validate_zfs_name(&name, "pool")?;
     let raw = executor::zpool(&["status", "-v", &name]).await?;
     let vdevs = parse_vdev_config(&raw);
     Ok(Json(json!({ "name": name, "vdevs": vdevs })))
 }
 
 async fn start_scrub(Path(name): Path<String>) -> Result<Json<Value>, ApiError> {
+    executor::validate_zfs_name(&name, "pool")?;
     match executor::zpool(&["scrub", &name]).await {
         Ok(_) => Ok(Json(json!({ "message": format!("Scrub started on pool '{name}'") }))),
         Err(ApiError::CommandFailed { ref stderr, .. })
@@ -298,11 +308,13 @@ async fn start_scrub(Path(name): Path<String>) -> Result<Json<Value>, ApiError> 
 }
 
 async fn stop_scrub(Path(name): Path<String>) -> Result<Json<Value>, ApiError> {
+    executor::validate_zfs_name(&name, "pool")?;
     executor::zpool(&["scrub", "-s", &name]).await?;
     Ok(Json(json!({ "message": format!("Scrub stopped on pool '{name}'") })))
 }
 
 async fn scrub_status(Path(name): Path<String>) -> Result<Json<Value>, ApiError> {
+    executor::validate_zfs_name(&name, "pool")?;
     let raw = executor::zpool(&["status", &name]).await?;
 
     let lines: Vec<&str> = raw.lines().collect();
@@ -343,11 +355,13 @@ async fn scrub_status(Path(name): Path<String>) -> Result<Json<Value>, ApiError>
 }
 
 async fn export_pool(Path(name): Path<String>) -> Result<Json<Value>, ApiError> {
+    executor::validate_zfs_name(&name, "pool")?;
     executor::zpool(&["export", &name]).await?;
     Ok(Json(json!({ "message": format!("Pool '{name}' exported") })))
 }
 
 async fn import_pool(Path(name): Path<String>, Query(q): Query<ImportQuery>) -> Result<Json<Value>, ApiError> {
+    executor::validate_zfs_name(&name, "pool")?;
     let mut args = vec!["import".to_string()];
     if let Some(dir) = q.dir {
         args.push("-d".to_string());
@@ -360,12 +374,14 @@ async fn import_pool(Path(name): Path<String>, Query(q): Query<ImportQuery>) -> 
 }
 
 async fn pool_history(Path(name): Path<String>) -> Result<Json<Value>, ApiError> {
+    executor::validate_zfs_name(&name, "pool")?;
     let raw = executor::zpool(&["history", &name]).await?;
     let lines: Vec<&str> = raw.lines().collect();
     Ok(Json(json!({ "name": name, "history": lines })))
 }
 
 async fn pool_iostat(Path(name): Path<String>) -> Result<Json<Value>, ApiError> {
+    executor::validate_zfs_name(&name, "pool")?;
     let raw = executor::zpool(&["iostat", "-H", "-p", &name, "1", "2"]).await?;
     let rows: Vec<Vec<String>> = raw.lines()
         .filter(|l| !l.trim().is_empty())
@@ -376,12 +392,14 @@ async fn pool_iostat(Path(name): Path<String>) -> Result<Json<Value>, ApiError> 
 }
 
 async fn upgrade_pool(Path(name): Path<String>) -> Result<Json<Value>, ApiError> {
+    executor::validate_zfs_name(&name, "pool")?;
     executor::zpool(&["upgrade", &name]).await?;
     Ok(Json(json!({ "message": format!("Pool '{name}' upgraded") })))
 }
 
 // ZFS Rewrite = zpool scrub (validates & rewrites checksums for all blocks)
 async fn resilver_pool(Path(name): Path<String>) -> Result<Json<Value>, ApiError> {
+    executor::validate_zfs_name(&name, "pool")?;
     match executor::zpool(&["scrub", &name]).await {
         Ok(_) => Ok(Json(json!({ "message": format!("Rewrite (scrub) started on pool '{name}'") }))),
         Err(ApiError::CommandFailed { ref stderr, .. }) if stderr.contains("already in progress") => {
@@ -401,6 +419,7 @@ async fn resilver_pool(Path(name): Path<String>) -> Result<Json<Value>, ApiError
 }
 
 async fn pool_events(Path(name): Path<String>) -> Result<Json<Value>, ApiError> {
+    executor::validate_zfs_name(&name, "pool")?;
     let raw = executor::zpool(&["history", &name]).await?;
     let events: Vec<Value> = raw
         .lines()
@@ -440,6 +459,7 @@ async fn expand_pool(
     Path(name): Path<String>,
     Json(body): Json<ExpandBody>,
 ) -> Result<Json<Value>, ApiError> {
+    executor::validate_zfs_name(&name, "pool")?;
     if body.disk.is_empty() {
         return Err(ApiError::BadRequest("'disk' is required".into()));
     }
@@ -451,6 +471,7 @@ async fn replace_disk(
     Path(name): Path<String>,
     Json(body): Json<ReplaceBody>,
 ) -> Result<Json<Value>, ApiError> {
+    executor::validate_zfs_name(&name, "pool")?;
     if body.old_disk.is_empty() || body.new_disk.is_empty() {
         return Err(ApiError::BadRequest("'old_disk' and 'new_disk' are required".into()));
     }
@@ -461,5 +482,5 @@ async fn replace_disk(
     args.push(body.new_disk.clone());
     let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     executor::zpool(&refs).await?;
-    Ok(Json(json!({ "message": format!("Replacing '{}' → '{}' on pool '{name}'", body.old_disk, body.new_disk) })))
+    Ok(Json(json!({ "message": format!("Replacing '{}' -> '{}' on pool '{name}'", body.old_disk, body.new_disk) })))
 }

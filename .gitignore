@@ -1,3 +1,2 @@
-/target
-build_errors.txt
-.git
+data/redis/
+data/postgres/

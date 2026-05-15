@@ -2,13 +2,51 @@ use crate::error::ApiError;
 use tokio::process::Command;
 use tracing::debug;
 
+const ALLOWED_ZFS: &[&str] = &[
+    "list", "create", "destroy", "get", "set", "snapshot", "rollback", "clone",
+    "rename", "mount", "unmount", "send", "recv", "diff", "upgrade", "allow",
+    "unallow", "hold", "release", "inherit", "promote",
+];
+
+const ALLOWED_ZPOOL: &[&str] = &[
+    "list", "status", "create", "destroy", "export", "import", "scrub", "history",
+    "iostat", "upgrade", "online", "offline", "replace", "remove", "add", "split",
+    "attach", "detach", "events", "labelclear",
+];
+
+fn validate_arg(arg: &str) -> Result<(), ApiError> {
+    if arg.contains([';', '&', '|', '`', '$', '(', ')', '{', '}', '<', '>', '\n', '\r', '\0']) {
+        return Err(ApiError::BadRequest("Invalid character in argument".into()));
+    }
+    if arg.contains("..") {
+        return Err(ApiError::BadRequest("Path traversal not allowed".into()));
+    }
+    Ok(())
+}
+
 /// Run any `zfs` subcommand and return its stdout as a String.
 pub async fn zfs(args: &[&str]) -> Result<String, ApiError> {
+    if let Some(subcmd) = args.first() {
+        if !ALLOWED_ZFS.contains(subcmd) {
+            return Err(ApiError::BadRequest(format!("zfs subcommand '{}' is not allowed", subcmd)));
+        }
+    }
+    for arg in args {
+        validate_arg(arg)?;
+    }
     command("zfs", args).await
 }
 
 /// Run any `zpool` subcommand and return its stdout as a String.
 pub async fn zpool(args: &[&str]) -> Result<String, ApiError> {
+    if let Some(subcmd) = args.first() {
+        if !ALLOWED_ZPOOL.contains(subcmd) {
+            return Err(ApiError::BadRequest(format!("zpool subcommand '{}' is not allowed", subcmd)));
+        }
+    }
+    for arg in args {
+        validate_arg(arg)?;
+    }
     command("zpool", args).await
 }
 
@@ -26,10 +64,17 @@ pub async fn command(bin: &str, args: &[&str]) -> Result<String, ApiError> {
     }
 }
 
-/// Parse `-H -p` table output (tab-separated) into a Vec of rows (Vec<String>).
-pub fn parse_table(raw: &str) -> Vec<Vec<String>> {
-    raw.lines()
-        .filter(|l| !l.trim().is_empty())
-        .map(|l| l.split('\t').map(|s| s.to_string()).collect())
-        .collect()
+
+pub fn validate_zfs_name(name: &str, kind: &str) -> Result<(), ApiError> {
+    if name.is_empty() {
+        return Err(ApiError::BadRequest(format!("{kind} name cannot be empty")));
+    }
+    if name.len() > 256 {
+        return Err(ApiError::BadRequest(format!("{kind} name too long")));
+    }
+    // ZFS names: alphanumeric, -, _, ., :, /, @
+    if !name.chars().all(|c| c.is_alphanumeric() || matches!(c, '-' | '_' | '.' | ':' | '/' | '@')) {
+        return Err(ApiError::BadRequest(format!("Invalid characters in {kind} name: {name}")));
+    }
+    Ok(())
 }
