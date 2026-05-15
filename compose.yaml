@@ -1,0 +1,79 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: zfs-redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: zfs-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=zfs_metrics
+      - POSTGRES_USER=zfs
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-zfs_secret}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U zfs -d zfs_metrics" ]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+      start_period: 10s
+
+  zfs-backend:
+    image: ghcr.io/einniki/zfs-manager-backend:latest
+    container_name: zfs-backend
+    restart: unless-stopped
+    ports:
+      - "${ZFS_BACKEND_PORT:-3000}:3000"
+    environment:
+      - ZFS_API_PORT=3000
+      - RUST_LOG=info
+      - ZFS_MANAGER_DATA=/home/docker/zfs-manager
+      - ZFS_API_KEY=${ZFS_API_KEY:-admin123}
+      - REDIS_URL=redis://zfs-redis:6379
+      - DATABASE_URL=postgres://zfs:${POSTGRES_PASSWORD:-zfs_secret}@zfs-postgres:5432/zfs_metrics
+    privileged: true
+    volumes:
+      - /dev:/dev
+      - /proc:/proc:ro
+      - /sys/module/zfs:/sys/module/zfs:ro
+      - /var/lib/zfs:/var/lib/zfs:ro
+      - /home/docker/zfs-manager:/home/docker/zfs-manager
+    working_dir: /home/docker/zfs-manager
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  zfs-web:
+    image: ghcr.io/einniki/zfs-manager-web:latest
+    container_name: zfs-web
+    restart: unless-stopped
+    ports:
+      - "${ZFS_WEB_PORT:-8080}:80"
+    command: >
+      sh -c "
+        echo '🚀 Starting Web Container Diagnostic...' &&
+        if getent hosts zfs-backend; then echo '  ✅ Network: zfs-backend is resolvable'; else echo '  ❌ Network: zfs-backend NOT found'; fi &&
+        sed -i 's/admin123/${ZFS_API_KEY:-admin123}/g' /usr/share/nginx/html/assets/*.js &&
+        echo '  ✅ Injection: API Key replacement finished' &&
+        echo '🏁 Web Diagnostic finished. Starting Nginx...' &&
+        nginx -g 'daemon off;'
+      "
+    depends_on:
+      - zfs-backend
+
+volumes:
+  redis_data:
+  postgres_data:
