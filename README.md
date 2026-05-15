@@ -19,7 +19,7 @@
 - **Settings** — change password, create and manage API keys with permission levels
   (Read Only / Read+Write / Admin)
 - **Customizable layout** — drag, remove and re-add widgets on Dashboard and
-  Performance page, layout saved server-side per user
+  Performance page, layout saved server-side.
 - **Responsive** — desktop, tablet and mobile support with collapsible sidebar
 
 ---
@@ -46,7 +46,6 @@ http://<your-host-ip>:8080
 ```
 
 Default login:
-- Username: `admin`
 - Password: `admin123`
 
 > ⚠️ **Change your password immediately after first login.**
