@@ -36,9 +36,7 @@ services:
       start_period: 10s
 
   zfs-backend:
-    build:
-      context: ./rust-backend
-      dockerfile: Dockerfile
+    image: ghcr.io/einniki/zfs-manager-backend:latest
     container_name: zfs-backend
     restart: unless-stopped
     ports:
@@ -67,11 +65,7 @@ services:
         condition: service_healthy
 
   zfs-web:
-    build:
-      context: ./web
-      dockerfile: Dockerfile
-      args:
-        - VITE_API_KEY=${ZFS_API_KEY:-admin123}
+    image: ghcr.io/einniki/zfs-manager-web:latest
     container_name: zfs-web
     extra_hosts:
       - "host.docker.internal:host-gateway"
