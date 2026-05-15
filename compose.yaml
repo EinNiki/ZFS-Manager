@@ -9,7 +9,7 @@ services:
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -27,18 +27,15 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-zfs_secret}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/01-init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U zfs -d zfs_metrics"]
+      test: [ "CMD-SHELL", "pg_isready -U zfs -d zfs_metrics" ]
       interval: 5s
       timeout: 3s
       retries: 15
       start_period: 10s
 
   zfs-backend:
-    build:
-      context: ./rust-backend
-      dockerfile: Dockerfile
+    image: ghcr.io/einniki/zfs-manager-backend:latest
     container_name: zfs-backend
     restart: unless-stopped
     ports:
@@ -67,17 +64,15 @@ services:
         condition: service_healthy
 
   zfs-web:
-    build:
-      context: ./web
-      dockerfile: Dockerfile
-      args:
-        - VITE_API_KEY=${ZFS_API_KEY:-admin123}
+    image: ghcr.io/einniki/zfs-manager-web:latest
     container_name: zfs-web
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
     ports:
       - "${ZFS_WEB_PORT:-8080}:80"
+    command: >
+      sh -c "sed -i 's/admin123/${ZFS_API_KEY:-admin123}/g' /usr/share/nginx/html/assets/*.js && nginx -g 'daemon off;'"
     depends_on:
       - zfs-backend
 
