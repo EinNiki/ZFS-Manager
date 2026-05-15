@@ -59,8 +59,6 @@ services:
   zfs-web:
     image: ghcr.io/einniki/zfs-manager-web:latest
     container_name: zfs-web
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     restart: unless-stopped
     ports:
       - "${ZFS_WEB_PORT:-8080}:80"
