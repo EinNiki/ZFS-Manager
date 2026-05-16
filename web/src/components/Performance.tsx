@@ -306,16 +306,20 @@ export default function Performance({ stats, liveMetrics, serverTimeOffsetMs = 0
     return smoothedLiveData;
   }, [liveMode, chartData, smoothedLiveData]);
 
-  // Fetch chart history when interval changes (and not in live mode)
+  // Fetch chart history when interval changes (and not in live mode); poll every 10s
   useEffect(() => {
     if (liveMode) return;
     setHistoryData([]);
     setLoadingHistory(true);
     const apiInterval = INTERVALS.find(i => i.key === interval)?.api ?? interval;
-    api.getMetricsHistory(apiInterval)
-      .then(res => setHistoryData(transformHistory(res.metrics, interval)))
-      .catch(() => setHistoryData([]))
-      .finally(() => setLoadingHistory(false));
+    const fetch = () =>
+      api.getMetricsHistory(apiInterval)
+        .then(res => setHistoryData(transformHistory(res.metrics, interval)))
+        .catch(() => setHistoryData([]))
+        .finally(() => setLoadingHistory(false));
+    fetch();
+    const id = setInterval(fetch, 10_000);
+    return () => clearInterval(id);
   }, [interval, liveMode]);
 
   // Fetch fill predictions — on mount use auto (longest window), on interval change use that window
@@ -405,9 +409,9 @@ export default function Performance({ stats, liveMetrics, serverTimeOffsetMs = 0
   const livePeakR = liveStats.reduce((m, d) => Math.max(m, d.read  || 0), 0);
   const livePeakW = liveStats.reduce((m, d) => Math.max(m, d.write || 0), 0);
 
-  // DB totals (all-time, from backend, cached 60s)
-  const totalReadGB  = liveMetrics?.total_read_gb_db  ?? 0;
-  const totalWriteGB = liveMetrics?.total_write_gb_db ?? 0;
+  // DB totals: backend returns cumulative MB counters, convert to GB
+  const totalReadGB  = (liveMetrics?.total_read_mb  ?? 0) / 1024;
+  const totalWriteGB = (liveMetrics?.total_write_mb ?? 0) / 1024;
 
   // XAxis config
   const liveXAxisProps = {

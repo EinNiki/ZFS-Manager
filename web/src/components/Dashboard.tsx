@@ -576,28 +576,34 @@ export default function Dashboard({
   const daysUntilFull  = null; // legacy, kept for capacity banner only
 
   useEffect(() => {
-    api.getMetricsHistory('1d').then(res => {
-      const seen = new Map<string, any>();
-      for (const m of (res.metrics || [])) {
-        if (!seen.has(m.collected_at)) {
-          seen.set(m.collected_at, {
-            timestamp: new Date(m.collected_at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }),
-            read: m.read_bw_mb, write: m.write_bw_mb, alloc: m.alloc_gb,
-          });
+    const fetchChartData = () => {
+      api.getMetricsHistory('1d').then(res => {
+        const seen = new Map<string, any>();
+        for (const m of (res.metrics || [])) {
+          if (!seen.has(m.collected_at)) {
+            seen.set(m.collected_at, {
+              timestamp: new Date(m.collected_at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }),
+              read: m.read_bw_mb, write: m.write_bw_mb, alloc: m.alloc_gb,
+            });
+          }
         }
-      }
-      setHistData1d(Array.from(seen.values()));
-    }).catch(() => {});
+        setHistData1d(Array.from(seen.values()));
+      }).catch(() => {});
 
-    api.getMetricsHistory('1w').then(res => {
-      const seen = new Map<string, any>();
-      for (const m of (res.metrics || [])) {
-        if (!seen.has(m.collected_at)) {
-          seen.set(m.collected_at, { write: m.write_bw_mb });
+      api.getMetricsHistory('1w').then(res => {
+        const seen = new Map<string, any>();
+        for (const m of (res.metrics || [])) {
+          if (!seen.has(m.collected_at)) {
+            seen.set(m.collected_at, { write: m.write_bw_mb });
+          }
         }
-      }
-      setHistData7d(Array.from(seen.values()));
-    }).catch(() => {});
+        setHistData7d(Array.from(seen.values()));
+      }).catch(() => {});
+    };
+
+    fetchChartData();
+    const id = setInterval(fetchChartData, 10_000);
+    return () => clearInterval(id);
   }, []);
 
   useEffect(() => {

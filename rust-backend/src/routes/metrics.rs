@@ -349,20 +349,16 @@ async fn get_fill_prediction(
             ("–".to_string(), "muted")
         } else {
             let days = free_gb / rate_gb_day;
-            if days > 730.0 {
-                ("–".to_string(), "muted")
+            let fill_dt = today + chrono::Duration::seconds((days * 86400.0) as i64);
+            let date_str = if single_point {
+                format!("~{}", fill_dt.format("%d.%m.%Y"))
             } else {
-                let fill_dt = today + chrono::Duration::seconds((days * 86400.0) as i64);
-                let date_str = if single_point {
-                    format!("~{}", fill_dt.format("%d.%m.%Y"))
-                } else {
-                    fill_dt.format("%d.%m.%Y").to_string()
-                };
-                let c = if days < 14.0 { "danger" }
-                        else if days < 90.0 { "warning" }
-                        else { "secondary" };
-                (date_str, c)
-            }
+                fill_dt.format("%d.%m.%Y").to_string()
+            };
+            let c = if days < 14.0 { "danger" }
+                    else if days < 90.0 { "warning" }
+                    else { "secondary" };
+            (date_str, c)
         };
 
         if overall_key.is_none() {
