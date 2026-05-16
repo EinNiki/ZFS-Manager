@@ -11,7 +11,7 @@ const ALLOWED_ZFS: &[&str] = &[
 const ALLOWED_ZPOOL: &[&str] = &[
     "list", "status", "create", "destroy", "export", "import", "scrub", "history",
     "iostat", "upgrade", "online", "offline", "replace", "remove", "add", "split",
-    "attach", "detach", "events", "labelclear",
+    "attach", "detach", "events", "labelclear", "get", "set",
 ];
 
 fn validate_arg(arg: &str) -> Result<(), ApiError> {

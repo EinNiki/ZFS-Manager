@@ -12,8 +12,9 @@ use crate::state::AppState;
 
 pub fn router(state: AppState) -> Router {
     Router::new()
-        .route("/api/v1/metrics/history", get(get_metrics_history))
-        .route("/api/v1/metrics/live",    get(get_live_metrics))
+        .route("/api/v1/metrics/history",         get(get_metrics_history))
+        .route("/api/v1/metrics/live",             get(get_live_metrics))
+        .route("/api/v1/metrics/fill-prediction",  get(get_fill_prediction))
         .with_state(state)
 }
 
@@ -226,5 +227,166 @@ async fn get_live_metrics(
         "write_bw_mb":    write_bw_mb,
         "read_iops":      read_iops,
         "write_iops":     write_iops,
+    }))
+}
+
+// ── Fill prediction ───────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct FillPredictionParams {
+    window: Option<String>,
+}
+
+async fn get_fill_prediction(
+    State(state): State<AppState>,
+    Query(params): Query<FillPredictionParams>,
+) -> Json<Value> {
+    let window = params.window.as_deref().unwrap_or("auto");
+
+    let pg = match state.pg {
+        Some(ref client) => client.clone(),
+        None => return Json(json!({ "predictions": [], "window_used": null, "window_key": null })),
+    };
+
+    // Single query: latest free/alloc per pool + avg write rates across all windows
+    // write_bw_mb is in MB/s; daily rate = avg_mb_s * 86400 / 1024 GB/day
+    let query = "
+        WITH latest_pool AS (
+            SELECT DISTINCT ON (pool_name) pool_name, alloc_gb, free_gb
+            FROM zfs_metrics WHERE pool_name != ''
+            ORDER BY pool_name, collected_at DESC
+        ), rates AS (
+            SELECT pool_name,
+                AVG(CASE WHEN collected_at > NOW() - INTERVAL '30 days' THEN write_bw_mb END) as avg_30d,
+                COUNT(CASE WHEN collected_at > NOW() - INTERVAL '30 days' THEN 1 END) as cnt_30d,
+                AVG(CASE WHEN collected_at > NOW() - INTERVAL '7 days'  THEN write_bw_mb END) as avg_7d,
+                COUNT(CASE WHEN collected_at > NOW() - INTERVAL '7 days'  THEN 1 END) as cnt_7d,
+                AVG(CASE WHEN collected_at > NOW() - INTERVAL '24 hours' THEN write_bw_mb END) as avg_1d,
+                COUNT(CASE WHEN collected_at > NOW() - INTERVAL '24 hours' THEN 1 END) as cnt_1d,
+                AVG(CASE WHEN collected_at > NOW() - INTERVAL '6 hours'  THEN write_bw_mb END) as avg_6h,
+                COUNT(CASE WHEN collected_at > NOW() - INTERVAL '6 hours'  THEN 1 END) as cnt_6h,
+                AVG(CASE WHEN collected_at > NOW() - INTERVAL '1 hour'   THEN write_bw_mb END) as avg_1h,
+                COUNT(CASE WHEN collected_at > NOW() - INTERVAL '1 hour'   THEN 1 END) as cnt_1h
+            FROM zfs_metrics
+            WHERE pool_name != '' AND collected_at > NOW() - INTERVAL '30 days'
+            GROUP BY pool_name
+        )
+        SELECT l.pool_name, l.alloc_gb, l.free_gb,
+               r.avg_30d, r.cnt_30d, r.avg_7d, r.cnt_7d,
+               r.avg_1d,  r.cnt_1d,  r.avg_6h, r.cnt_6h,
+               r.avg_1h,  r.cnt_1h
+        FROM latest_pool l LEFT JOIN rates r ON l.pool_name = r.pool_name
+    ";
+
+    let rows = match pg.query(query, &[]).await {
+        Ok(r) => r,
+        Err(e) => {
+            warn!("fill-prediction query failed: {e}");
+            return Json(json!({ "predictions": [], "window_used": null, "window_key": null }));
+        }
+    };
+
+    if rows.is_empty() {
+        return Json(json!({ "predictions": [], "window_used": null, "window_key": null }));
+    }
+
+    // Windows ordered longest to shortest: (key, label, avg_col, cnt_col)
+    let all_windows: &[(&str, &str, usize, usize)] = &[
+        ("30d", "30 days",  3,  4),
+        ("7d",  "7 days",   5,  6),
+        ("1d",  "24 hours", 7,  8),
+        ("6h",  "6 hours",  9,  10),
+        ("1h",  "1 hour",   11, 12),
+    ];
+
+    // Start index for the preferred window based on the requested window param
+    let preferred_start: usize = match window {
+        "auto" | "30d" | "1m" | "1y" => 0,
+        "7d" | "1w"                  => 1,
+        "1d"                         => 2,
+        "6h"                         => 3,
+        "1h"                         => 4,
+        _                            => 0,
+    };
+
+    let today = chrono::Local::now();
+    let mut predictions: Vec<Value> = Vec::new();
+    let mut overall_key:   Option<&str> = None;
+    let mut overall_label: Option<&str> = None;
+
+    for row in &rows {
+        let pool_name: String      = row.get(0);
+        let alloc_gb:  f64         = row.get(1);
+        let free_gb:   f64         = row.get(2);
+
+        // Find the best (longest) window with ≥1 data point
+        let mut best_avg:   f64   = 0.0;
+        let mut best_cnt:   i64   = 0;
+        let mut best_key:   &str  = "";
+        let mut best_label: &str  = "";
+
+        for &(key, label, avg_col, cnt_col) in &all_windows[preferred_start..] {
+            let cnt: i64 = row.get::<_, Option<i64>>(cnt_col).unwrap_or(0);
+            if cnt > 0 {
+                let avg: f64 = row.get::<_, Option<f64>>(avg_col).unwrap_or(0.0);
+                best_avg   = avg;
+                best_cnt   = cnt;
+                best_key   = key;
+                best_label = label;
+                break;
+            }
+        }
+
+        if best_cnt == 0 {
+            continue; // No write data for this pool in any window — skip
+        }
+
+        // rate_gb_day = avg MB/s * 86400 s/day / 1024 MB/GB
+        let rate_gb_day = best_avg * 86400.0 / 1024.0;
+        let single_point = best_cnt == 1;
+
+        let (fill_date, color) = if rate_gb_day <= 0.0 || free_gb <= 0.0 {
+            ("–".to_string(), "muted")
+        } else {
+            let days = free_gb / rate_gb_day;
+            if days > 730.0 {
+                ("–".to_string(), "muted")
+            } else {
+                let fill_dt = today + chrono::Duration::seconds((days * 86400.0) as i64);
+                let date_str = if single_point {
+                    format!("~{}", fill_dt.format("%d.%m.%Y"))
+                } else {
+                    fill_dt.format("%d.%m.%Y").to_string()
+                };
+                let c = if days < 14.0 { "danger" }
+                        else if days < 90.0 { "warning" }
+                        else { "secondary" };
+                (date_str, c)
+            }
+        };
+
+        if overall_key.is_none() {
+            overall_key   = Some(best_key);
+            overall_label = Some(best_label);
+        }
+
+        predictions.push(json!({
+            "pool":        pool_name,
+            "fill_date":   fill_date,
+            "color":       color,
+            "rate_gb_day": format!("{:.4}", rate_gb_day),
+            "window_used": best_label,
+            "window_key":  best_key,
+            "alloc_gb":    alloc_gb,
+            "free_gb":     free_gb,
+            "points":      best_cnt,
+            "fallback":    single_point,
+        }));
+    }
+
+    Json(json!({
+        "predictions": predictions,
+        "window_used": overall_label,
+        "window_key":  overall_key,
     }))
 }

@@ -27,9 +27,16 @@ pub fn router() -> Router {
         .route("/api/v1/pools/:name/expand",       post(expand_pool))
         .route("/api/v1/pools/:name/replace",      post(replace_disk))
         .route("/api/v1/pools/:name/events",       get(pool_events))
+        .route("/api/v1/pools/:name/settings",     get(get_pool_settings).put(set_pool_setting))
 }
 
 // ── Bodies ────────────────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+pub struct SetPoolSettingBody {
+    pub prop:  String,
+    pub value: String,
+}
 
 #[derive(Deserialize)]
 pub struct CreatePoolBody {
@@ -176,20 +183,37 @@ fn extract_time_remaining(detail: &str) -> String {
 
 async fn list_pools() -> Result<Json<Value>, ApiError> {
     let raw = executor::zpool(&["list", "-H", "-p", "-o", "name,size,alloc,free,frag,cap,dedup,health,altroot"]).await?;
+
+    // Get available bytes per pool (accounts for ZFS overhead, parity, reservations)
+    let avail_raw = executor::zfs(&["get", "-H", "-p", "-o", "name,value", "available"])
+        .await
+        .unwrap_or_default();
+    let avail_map: std::collections::HashMap<&str, u64> = avail_raw.lines()
+        .filter_map(|line| {
+            let mut parts = line.splitn(2, '\t');
+            let name = parts.next()?;
+            let val: u64 = parts.next()?.trim().parse().ok()?;
+            Some((name, val))
+        })
+        .collect();
+
     let pools: Vec<Value> = raw.lines()
         .filter(|l| !l.trim().is_empty())
         .map(|line| {
             let c: Vec<&str> = line.split('\t').collect();
+            let name = c.first().copied().unwrap_or("");
+            let available_bytes = avail_map.get(name).copied().unwrap_or(0);
             json!({
-                "name":    c.first().unwrap_or(&""),
-                "size":    c.get(1).unwrap_or(&""),
-                "alloc":   c.get(2).unwrap_or(&""),
-                "free":    c.get(3).unwrap_or(&""),
-                "frag":    c.get(4).unwrap_or(&""),
-                "cap":     c.get(5).unwrap_or(&""),
-                "dedup":   c.get(6).unwrap_or(&""),
-                "health":  c.get(7).unwrap_or(&""),
-                "altroot": c.get(8).unwrap_or(&""),
+                "name":            name,
+                "size":            c.get(1).unwrap_or(&""),
+                "alloc":           c.get(2).unwrap_or(&""),
+                "free":            c.get(3).unwrap_or(&""),
+                "frag":            c.get(4).unwrap_or(&""),
+                "cap":             c.get(5).unwrap_or(&""),
+                "dedup":           c.get(6).unwrap_or(&""),
+                "health":          c.get(7).unwrap_or(&""),
+                "altroot":         c.get(8).unwrap_or(&""),
+                "available_bytes": available_bytes,
             })
         })
         .collect();
@@ -483,4 +507,129 @@ async fn replace_disk(
     let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     executor::zpool(&refs).await?;
     Ok(Json(json!({ "message": format!("Replacing '{}' -> '{}' on pool '{name}'", body.old_disk, body.new_disk) })))
+}
+
+// ── Pool settings ─────────────────────────────────────────────────────────────
+
+const ZPOOL_PROPS: &[&str] = &["autoreplace", "autotrim", "autoexpand", "failmode", "comment"];
+const ZFS_PROPS:   &[&str] = &[
+    "compression", "atime", "relatime", "dedup", "recordsize",
+    "xattr", "quota", "reservation", "snapdir", "sync",
+];
+
+fn validate_pool_setting(prop: &str, value: &str) -> Result<(), ApiError> {
+    match prop {
+        "autoreplace" | "autotrim" | "autoexpand" | "atime" | "relatime" => {
+            if !["on", "off"].contains(&value) {
+                return Err(ApiError::BadRequest(format!("'{prop}' must be 'on' or 'off'")));
+            }
+        }
+        "failmode" => {
+            if !["wait", "continue", "panic"].contains(&value) {
+                return Err(ApiError::BadRequest("'failmode' must be 'wait', 'continue', or 'panic'".into()));
+            }
+        }
+        "compression" => {
+            let valid = ["on", "off", "lz4", "gzip", "gzip-1", "gzip-9", "zle", "lzjb", "zstd", "zstd-fast"];
+            if !valid.contains(&value) {
+                return Err(ApiError::BadRequest(format!("Invalid compression value: {value}")));
+            }
+        }
+        "dedup" => {
+            let valid = ["off", "on", "verify", "sha256", "sha512", "skein", "edonr,verify"];
+            if !valid.contains(&value) {
+                return Err(ApiError::BadRequest(format!("Invalid dedup value: {value}")));
+            }
+        }
+        "recordsize" => {
+            let valid = ["512", "1K", "2K", "4K", "8K", "16K", "32K", "64K", "128K", "256K", "512K", "1M"];
+            if !valid.contains(&value) {
+                return Err(ApiError::BadRequest(format!("Invalid recordsize: {value}")));
+            }
+        }
+        "xattr" => {
+            if !["on", "off", "sa"].contains(&value) {
+                return Err(ApiError::BadRequest("'xattr' must be 'on', 'off', or 'sa'".into()));
+            }
+        }
+        "quota" | "reservation" => {
+            if value != "none" && !value.chars().all(|c| c.is_ascii_alphanumeric()) {
+                return Err(ApiError::BadRequest(format!("Invalid {prop} value: {value}")));
+            }
+        }
+        "snapdir" => {
+            if !["hidden", "visible"].contains(&value) {
+                return Err(ApiError::BadRequest("'snapdir' must be 'hidden' or 'visible'".into()));
+            }
+        }
+        "sync" => {
+            if !["standard", "always", "disabled"].contains(&value) {
+                return Err(ApiError::BadRequest("'sync' must be 'standard', 'always', or 'disabled'".into()));
+            }
+        }
+        "comment" => {} // free text, no validation needed
+        _ => return Err(ApiError::BadRequest(format!("Unknown property: {prop}"))),
+    }
+    Ok(())
+}
+
+async fn get_pool_settings(Path(name): Path<String>) -> Result<Json<Value>, ApiError> {
+    executor::validate_zfs_name(&name, "pool")?;
+
+    let pool_props_raw = executor::zpool(&["get", "-H", "autoreplace,autotrim,autoexpand,failmode,comment", &name])
+        .await
+        .unwrap_or_default();
+    let ds_props_raw = executor::zfs(&["get", "-H", "compression,atime,relatime,dedup,recordsize,xattr,quota,reservation,snapdir,sync", &name])
+        .await
+        .unwrap_or_default();
+
+    let pool_props: Vec<Value> = pool_props_raw.lines()
+        .filter_map(|line| {
+            let c: Vec<&str> = line.split('\t').collect();
+            if c.len() < 4 { return None; }
+            Some(json!({ "name": c[1], "value": c[2], "source": c[3].trim(), "scope": "pool" }))
+        })
+        .collect();
+
+    let dataset_props: Vec<Value> = ds_props_raw.lines()
+        .filter_map(|line| {
+            let c: Vec<&str> = line.split('\t').collect();
+            if c.len() < 4 { return None; }
+            Some(json!({ "name": c[1], "value": c[2], "source": c[3].trim(), "scope": "dataset" }))
+        })
+        .collect();
+
+    Ok(Json(json!({
+        "pool":          name,
+        "pool_props":    pool_props,
+        "dataset_props": dataset_props,
+    })))
+}
+
+async fn set_pool_setting(
+    Path(name): Path<String>,
+    Json(body): Json<SetPoolSettingBody>,
+) -> Result<Json<Value>, ApiError> {
+    executor::validate_zfs_name(&name, "pool")?;
+    if body.prop.is_empty() {
+        return Err(ApiError::BadRequest("'prop' is required".into()));
+    }
+    validate_pool_setting(&body.prop, &body.value)?;
+
+    if ZPOOL_PROPS.contains(&body.prop.as_str()) {
+        let kv = format!("{}={}", body.prop, body.value);
+        executor::zpool(&["set", &kv, &name]).await?;
+    } else if ZFS_PROPS.contains(&body.prop.as_str()) {
+        let kv = format!("{}={}", body.prop, body.value);
+        executor::zfs(&["set", &kv, &name]).await?;
+    } else {
+        return Err(ApiError::BadRequest(format!("Unknown property: {}", body.prop)));
+    }
+
+    Ok(Json(json!({
+        "message": format!("Set {}={} on {}", body.prop, body.value, name),
+        "pool":  name,
+        "prop":  body.prop,
+        "value": body.value,
+    })))
 }

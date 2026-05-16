@@ -676,7 +676,7 @@ export default function Performance({ stats, liveMetrics, serverTimeOffsetMs = 0
             )}
             {!loadingFill && fillPredictions.length === 0 && (
               <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border-subtle)', textAlign: 'center' }}>
-                <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Not enough historical write data to calculate fill date.</p>
+                <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>No data available</p>
               </div>
             )}
           </Panel>
