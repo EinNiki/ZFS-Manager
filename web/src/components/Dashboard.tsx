@@ -673,7 +673,7 @@ export default function Dashboard({
       case 'stats-row':
         const rawPct = totalRawCapacity > 0 ? (totalRawUsed / totalRawCapacity) * 100 : 0;
         return (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, alignItems: 'stretch' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 16, alignItems: 'stretch' }}>
             <StatCard
               label="Total Storage"
               value={formatBytes(totalCapacity, 1)}
@@ -696,6 +696,13 @@ export default function Dashboard({
               sub={`${snapshots.length} snapshot${snapshots.length !== 1 ? 's' : ''}`}
               icon={Layers}
               color="var(--info)"
+            />
+            <StatCard
+              label="Used Storage"
+              value={formatBytes(totalUsedBytes, 1)}
+              sub={`Raw (incl. parity): ${formatBytes(totalRawUsed, 1)}`}
+              icon={Database}
+              color={usagePct > 90 ? 'var(--danger)' : usagePct > 80 ? 'var(--warning)' : 'var(--accent)'}
             />
             <StatCard
               label="Available Space"
