@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Key, Lock, Plus, Trash2, Eye, EyeOff, CheckCircle, XCircle, Copy } from 'lucide-react';
+import { Key, Lock, Plus, Trash2, Eye, EyeOff, CheckCircle, XCircle, Copy, AlertTriangle } from 'lucide-react';
 import { api } from '../api';
 
 interface SettingsProps {
@@ -255,6 +255,7 @@ function ApiKeys({ addToast }: { addToast: (msg: string, type: 'success' | 'erro
   const [creating, setCreating]     = useState(false);
   const [newKeyValue, setNewKeyValue] = useState<string | null>(null);
   const [copied, setCopied]         = useState(false);
+  const [confirmState, setConfirmState] = useState<{ title: string; message: string; onConfirm: () => void } | null>(null);
 
   const load = async () => {
     try {
@@ -284,14 +285,19 @@ function ApiKeys({ addToast }: { addToast: (msg: string, type: 'success' | 'erro
   };
 
   const handleRevoke = async (id: number, name: string) => {
-    if (!confirm(`Revoke API key "${name}"? This cannot be undone.`)) return;
-    try {
-      await api.revokeApiKey(id);
-      addToast(`Key "${name}" revoked`, 'success');
-      await load();
-    } catch (err: any) {
-      addToast(err.message || 'Failed to revoke key', 'error');
-    }
+    setConfirmState({
+      title: "Revoke API Key",
+      message: `Are you sure you want to revoke the API key "${name}"? Any external scripts or integrations using this key will immediately lose access. This cannot be undone.`,
+      onConfirm: async () => {
+        try {
+          await api.revokeApiKey(id);
+          addToast(`Key "${name}" revoked`, 'success');
+          await load();
+        } catch (err: any) {
+          addToast(err.message || 'Failed to revoke key', 'error');
+        }
+      }
+    });
   };
 
   const handleCopy = async () => {
@@ -453,6 +459,25 @@ function ApiKeys({ addToast }: { addToast: (msg: string, type: 'success' | 'erro
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Fancy Confirmation Modal */}
+      {confirmState && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, backdropFilter: 'blur(4px)', animation: 'fadeIn 0.2s ease-out' }}>
+          <div style={{ background: 'var(--bg-surface)', padding: 24, borderRadius: 'var(--radius-lg)', border: '1px solid var(--border)', maxWidth: 400, width: '100%', boxShadow: '0 20px 50px rgba(0,0,0,0.6)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+              <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--danger)' }}>
+                <AlertTriangle size={20} />
+              </div>
+              <h4 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>{confirmState.title}</h4>
+            </div>
+            <p style={{ color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.5, margin: '0 0 20px 0' }}>{confirmState.message}</p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+              <button className="btn btn-secondary" onClick={() => setConfirmState(null)} style={{ padding: '8px 16px', fontSize: 13 }}>Cancel</button>
+              <button className="btn btn-primary" onClick={() => { confirmState.onConfirm(); setConfirmState(null); }} style={{ padding: '8px 16px', fontSize: 13, background: 'var(--danger)', borderColor: 'var(--danger)' }}>Confirm</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

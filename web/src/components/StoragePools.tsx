@@ -151,7 +151,7 @@ function DevicePicker({ onSelect, onClose, usedDisks = new Set<string>() }: {
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{disk.model || ''} {disk.rota ? 'HDD' : 'SSD'}</div>
                   </div>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: inUse ? 'var(--text-muted)' : 'var(--info)', fontWeight: 600 }}>{formatBytes(disk.size, 1)}</span>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: inUse ? 'var(--text-muted)' : 'var(--info)', fontWeight: 600 }}>{formatBytes(disk.size, 2)}</span>
                 </button>
               );
             })}
@@ -988,6 +988,7 @@ export default function StoragePools({ pools, onRefresh, zfsVersion }: StoragePo
   const [poolVdevs,     setPoolVdevs]     = useState<Record<string, any[]>>({});
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
   const [settingsOpenFor, setSettingsOpenFor] = useState<string | null>(null);
+  const [confirmState, setConfirmState] = useState<{ title: string; message: string; onConfirm: () => void } | null>(null);
 
   const pollTimers = useRef<Record<string, ReturnType<typeof setInterval>>>({});
 
@@ -1069,30 +1070,40 @@ export default function StoragePools({ pools, onRefresh, zfsVersion }: StoragePo
   }, []);
 
   const handleScrub = async (poolName: string) => {
-    if (!window.confirm(`Start ZFS scrub on pool "${poolName}"? This may impact performance.`)) return;
-    setScrubState(s => ({ ...s, [poolName]: 'running' }));
-    setScrubProgress(p => ({ ...p, [poolName]: { inProgress: true, done: false, progress: 0, timeRemaining: '', scan: '' } }));
-    try {
-      await api.startScrub(poolName);
-      showToast(`Scrub started on ${poolName}`, 'success');
-      startScrubPolling(poolName);
-    } catch (err: any) {
-      setScrubState(s => ({ ...s, [poolName]: 'error' }));
-      showToast(err.message || 'Scrub failed', 'error');
-      setTimeout(() => setScrubState(s => ({ ...s, [poolName]: 'idle' })), 3000);
-    }
+    setConfirmState({
+      title: "Start ZFS Scrub",
+      message: `Are you sure you want to start a ZFS scrub on pool "${poolName}"? A scrub validates the integrity of all data by reading every block and comparing its checksum. This can consume significant disk bandwidth and temporarily impact system performance.`,
+      onConfirm: async () => {
+        setScrubState(s => ({ ...s, [poolName]: 'running' }));
+        setScrubProgress(p => ({ ...p, [poolName]: { inProgress: true, done: false, progress: 0, timeRemaining: '', scan: '' } }));
+        try {
+          await api.startScrub(poolName);
+          showToast(`Scrub started on ${poolName}`, 'success');
+          startScrubPolling(poolName);
+        } catch (err: any) {
+          setScrubState(s => ({ ...s, [poolName]: 'error' }));
+          showToast(err.message || 'Scrub failed', 'error');
+          setTimeout(() => setScrubState(s => ({ ...s, [poolName]: 'idle' })), 3000);
+        }
+      }
+    });
   };
 
   const handleResilver = async (poolName: string) => {
-    if (!window.confirm(`Start ZFS resilver (scrub) on pool "${poolName}"?`)) return;
-    try {
-      await api.resilverPool(poolName);
-      showToast(`Rewrite (scrub) started on ${poolName}`, 'success');
-      setScrubState(s => ({ ...s, [poolName]: 'running' }));
-      startScrubPolling(poolName);
-    } catch (err: any) {
-      showToast(err.message || 'Rewrite failed', 'error');
-    }
+    setConfirmState({
+      title: "Start ZFS Resilver (Scrub)",
+      message: `Are you sure you want to start a ZFS resilver (rewrite/scrub) on pool "${poolName}"? This will check all mirrored or parity copies and synchronize any out-of-sync blocks.`,
+      onConfirm: async () => {
+        try {
+          await api.resilverPool(poolName);
+          showToast(`Rewrite (scrub) started on ${poolName}`, 'success');
+          setScrubState(s => ({ ...s, [poolName]: 'running' }));
+          startScrubPolling(poolName);
+        } catch (err: any) {
+          showToast(err.message || 'Rewrite failed', 'error');
+        }
+      }
+    });
   };
 
   const handleToggleStatus = async (poolName: string) => {
@@ -1269,38 +1280,38 @@ export default function StoragePools({ pools, onRefresh, zfsVersion }: StoragePo
                 </div>
               </div>
 
-              {/* Stats row */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 0, padding: '0', borderBottom: '1px solid var(--border)' }}>
+              {/* Stats row & Scrub Progress */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 0, padding: '0', borderBottom: '1px solid var(--border)' }}>
                 {[
                   { label: 'Fragmentation', value: `${(pool as any).frag ?? 0}%`, color: (pool as any).frag > 20 ? 'var(--warning)' : 'var(--text-primary)' },
                   { label: 'Dedup Ratio',   value: (pool as any).dedup || '1.00x', color: 'var(--text-primary)' },
                   { label: 'Disks',         value: disks.length > 0 ? String(disks.length) : '—', color: 'var(--text-primary)' },
                   { label: 'RAID Type',     value: raidType,                       color: rc },
                 ].map(({ label, value, color }) => (
-                  <div key={label} style={{ padding: '14px 20px', borderRight: '1px solid var(--border)' }}>
+                  <div key={label} style={{ padding: '14px 20px', borderRight: '1px solid var(--border)', minWidth: 120 }}>
                     <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', fontFamily: 'var(--font-ui)', marginBottom: 4 }}>{label}</div>
                     <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600, color }}>{value}</div>
                   </div>
                 ))}
-              </div>
 
-              {/* Scrub progress */}
-              {state === 'running' && progress && (
-                <div style={{ padding: '12px 24px', borderBottom: '1px solid var(--border)', background: 'rgba(245,158,11,0.04)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                    <span style={{ fontSize: 11, color: 'var(--warning)', fontFamily: 'var(--font-ui)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} /> Scrub in progress
-                    </span>
-                    <div style={{ display: 'flex', gap: 12, fontSize: 11, fontFamily: 'var(--font-mono)' }}>
-                      {progress.timeRemaining && <span style={{ color: 'var(--text-muted)' }}>{progress.timeRemaining} remaining</span>}
-                      <span style={{ color: 'var(--warning)', fontWeight: 700 }}>{progress.progress.toFixed(1)}%</span>
+                {/* Scrub progress */}
+                {state === 'running' && progress && (
+                  <div style={{ flex: 1, minWidth: 200, padding: '10px 20px', background: 'rgba(245,158,11,0.04)', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                      <span style={{ fontSize: 11, color: 'var(--warning)', fontFamily: 'var(--font-ui)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} /> Scrubbing
+                      </span>
+                      <div style={{ display: 'flex', gap: 12, fontSize: 11, fontFamily: 'var(--font-mono)' }}>
+                        {progress.timeRemaining && <span style={{ color: 'var(--text-muted)' }}>{progress.timeRemaining} rem</span>}
+                        <span style={{ color: 'var(--warning)', fontWeight: 700 }}>{progress.progress.toFixed(1)}%</span>
+                      </div>
+                    </div>
+                    <div style={{ height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 9999, overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${progress.progress}%`, background: 'var(--warning)', borderRadius: 9999, transition: 'width 0.5s' }} />
                     </div>
                   </div>
-                  <div style={{ height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 9999, overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${progress.progress}%`, background: 'var(--warning)', borderRadius: 9999, transition: 'width 0.5s' }} />
-                  </div>
-                </div>
-              )}
+                )}
+              </div>
 
               {/* Disk list */}
               {disks.length > 0 && (
@@ -1323,7 +1334,7 @@ export default function StoragePools({ pools, onRefresh, zfsVersion }: StoragePo
                   <Expand size={12} /> Expand Pool
                 </button>
                 <button className="btn btn-ghost" onClick={() => handleResilver(pool.name)} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11 }}>
-                  <RotateCcw size={12} /> Resilver
+                  <RotateCcw size={12} /> Resilver (Scrub)
                 </button>
               </div>
 
@@ -1358,6 +1369,25 @@ export default function StoragePools({ pools, onRefresh, zfsVersion }: StoragePo
           </div>
         )}
       </div>
+
+      {/* Fancy Confirmation Modal */}
+      {confirmState && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, backdropFilter: 'blur(4px)', animation: 'fadeIn 0.2s ease-out' }}>
+          <div style={{ background: 'var(--bg-surface)', padding: 24, borderRadius: 'var(--radius-lg)', border: '1px solid var(--border)', maxWidth: 400, width: '100%', boxShadow: '0 20px 50px rgba(0,0,0,0.6)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+              <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--danger)' }}>
+                <AlertTriangle size={20} />
+              </div>
+              <h4 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>{confirmState.title}</h4>
+            </div>
+            <p style={{ color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.5, margin: '0 0 20px 0' }}>{confirmState.message}</p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+              <button className="btn btn-secondary" onClick={() => setConfirmState(null)} style={{ padding: '8px 16px', fontSize: 13 }}>Cancel</button>
+              <button className="btn btn-primary" onClick={() => { confirmState.onConfirm(); setConfirmState(null); }} style={{ padding: '8px 16px', fontSize: 13, background: 'var(--danger)', borderColor: 'var(--danger)' }}>Confirm</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

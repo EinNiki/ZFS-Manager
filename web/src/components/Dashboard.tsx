@@ -22,6 +22,7 @@ interface DashboardProps {
   totalRawCapacity?: number;
   totalRawUsed?: number;
   currentStats: { read: number; write: number; iops: number; readIops?: number; writeIops?: number; cpu?: number; arcHit?: number };
+  liveMetrics?: any;
   systemStats?: any;
   logs?: ZFSLog[];
   loading?: boolean;
@@ -67,9 +68,9 @@ function fmtTimeUntilFull(days: number): string {
 function fmtUsableSpace(bytes: number): string {
   if (!bytes) return '—';
   const tb = bytes / (1024 ** 4);
-  if (tb >= 1) return `${tb.toFixed(1)} TB`;
+  if (tb >= 1) return `${tb.toFixed(2)} TB`;
   const gb = bytes / (1024 ** 3);
-  return `${gb.toFixed(1)} GB`;
+  return `${gb.toFixed(2)} GB`;
 }
 
 function colorVar(c: string): string {
@@ -226,17 +227,23 @@ function PoolCard({ pool, daysUntilFull }: { pool: ZFSPool; daysUntilFull: numbe
   const capColor = pool.cap > 90 ? 'var(--danger)' : pool.cap > 80 ? 'var(--warning)' : 'var(--success)';
 
   const [scrubState,  setScrubState]  = useState<'idle' | 'running' | 'success' | 'error'>('idle');
+  const [scrubProg,   setScrubProg]   = useState<{ progress: number; timeRemaining: string }>({ progress: 0, timeRemaining: '' });
   const [showSnap,    setShowSnap]    = useState(false);
   const [snapName,    setSnapName]    = useState('');
   const [snapError,   setSnapError]   = useState('');
   const [snapWorking, setSnapWorking] = useState(false);
   const [cardToast,   setCardToast]   = useState('');
+  const [confirmState, setConfirmState] = useState<{ title: string; message: string; onConfirm: () => void } | null>(null);
   const pollRef   = useRef<ReturnType<typeof setInterval> | null>(null);
   const popRef    = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     api.getScrubStatus(pool.name).then(res => {
-      if (res.in_progress) { setScrubState('running'); startPoll(); }
+      if (res.in_progress) {
+        setScrubState('running');
+        setScrubProg({ progress: res.progress || 0, timeRemaining: res.time_remaining || '' });
+        startPoll();
+      }
     }).catch(() => {});
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [pool.name]);
@@ -255,7 +262,9 @@ function PoolCard({ pool, daysUntilFull }: { pool: ZFSPool; daysUntilFull: numbe
     pollRef.current = setInterval(async () => {
       try {
         const res = await api.getScrubStatus(pool.name);
-        if (!res.in_progress) {
+        if (res.in_progress) {
+          setScrubProg({ progress: res.progress || 0, timeRemaining: res.time_remaining || '' });
+        } else {
           clearInterval(pollRef.current!); pollRef.current = null;
           setScrubState('success');
           setTimeout(() => setScrubState('idle'), 4000);
@@ -269,15 +278,20 @@ function PoolCard({ pool, daysUntilFull }: { pool: ZFSPool; daysUntilFull: numbe
 
   const handleScrub = async () => {
     if (scrubState === 'running') return;
-    if (!window.confirm(`Start ZFS scrub on pool "${pool.name}"? This may impact performance.`)) return;
-    setScrubState('running');
-    try {
-      await api.startScrub(pool.name);
-      startPoll();
-    } catch {
-      setScrubState('error');
-      setTimeout(() => setScrubState('idle'), 3000);
-    }
+    setConfirmState({
+      title: "Start ZFS Scrub",
+      message: `Are you sure you want to start a ZFS scrub on the pool "${pool.name}"? Scrubbing validates the integrity of all data blocks on disks. It can temporarily degrade I/O performance.`,
+      onConfirm: async () => {
+        setScrubState('running');
+        try {
+          await api.startScrub(pool.name);
+          startPoll();
+        } catch {
+          setScrubState('error');
+          setTimeout(() => setScrubState('idle'), 3000);
+        }
+      }
+    });
   };
 
   const openSnapshot = () => {
@@ -364,6 +378,24 @@ function PoolCard({ pool, daysUntilFull }: { pool: ZFSPool; daysUntilFull: numbe
         </div>
       )}
 
+      {/* Scrub Progress */}
+      {scrubState === 'running' && (
+        <div style={{ marginBottom: 16, padding: '10px 14px', background: 'rgba(245,158,11,0.04)', borderRadius: 'var(--radius)', border: '1px solid rgba(245,158,11,0.2)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+            <span style={{ fontSize: 11, color: 'var(--warning)', fontFamily: 'var(--font-ui)', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} /> Scrubbing
+            </span>
+            <div style={{ display: 'flex', gap: 12, fontSize: 11, fontFamily: 'var(--font-mono)' }}>
+              {scrubProg.timeRemaining && <span style={{ color: 'var(--text-muted)' }}>{scrubProg.timeRemaining} rem</span>}
+              <span style={{ color: 'var(--warning)', fontWeight: 700 }}>{scrubProg.progress.toFixed(1)}%</span>
+            </div>
+          </div>
+          <div style={{ height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 9999, overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: `${scrubProg.progress}%`, background: 'var(--warning)', borderRadius: 9999, transition: 'width 0.5s' }} />
+          </div>
+        </div>
+      )}
+
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, paddingTop: 14, borderTop: '1px solid var(--border)', position: 'relative' }}>
         {/* Scrub button */}
         <button
@@ -435,6 +467,25 @@ function PoolCard({ pool, daysUntilFull }: { pool: ZFSPool; daysUntilFull: numbe
           )}
         </div>
       </div>
+
+      {/* Fancy Confirmation Modal */}
+      {confirmState && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, backdropFilter: 'blur(4px)', animation: 'fadeIn 0.2s ease-out' }}>
+          <div style={{ background: 'var(--bg-surface)', padding: 24, borderRadius: 'var(--radius-lg)', border: '1px solid var(--border)', maxWidth: 400, width: '100%', boxShadow: '0 20px 50px rgba(0,0,0,0.6)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+              <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--danger)' }}>
+                <AlertTriangle size={20} />
+              </div>
+              <h4 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>{confirmState.title}</h4>
+            </div>
+            <p style={{ color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.5, margin: '0 0 20px 0' }}>{confirmState.message}</p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+              <button className="btn btn-secondary" onClick={() => setConfirmState(null)} style={{ padding: '8px 16px', fontSize: 13 }}>Cancel</button>
+              <button className="btn btn-primary" onClick={() => { confirmState.onConfirm(); setConfirmState(null); }} style={{ padding: '8px 16px', fontSize: 13, background: 'var(--danger)', borderColor: 'var(--danger)' }}>Confirm</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -541,7 +592,7 @@ const WIDGET_LABELS: Record<string, string> = {
 export default function Dashboard({
   pools, datasets, snapshots,
   totalCapacity, totalUsedStorage, totalRawCapacity = 0, totalRawUsed = 0,
-  currentStats, systemStats, logs = [], loading,
+  currentStats, liveMetrics, systemStats, logs = [], loading,
   historicalStats = [],
 }: DashboardProps) {
   const { widgets, loaded, setVisible, reorder, toast } = useLayout('dashboard');
@@ -648,11 +699,11 @@ export default function Dashboard({
       case 'stats-row':
         const rawPct = totalRawCapacity > 0 ? (totalRawUsed / totalRawCapacity) * 100 : 0;
         return (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, alignItems: 'stretch' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 16, alignItems: 'stretch' }}>
             <StatCard
               label="Total Storage"
-              value={formatBytes(totalCapacity, 1)}
-              sub={`${formatBytes(totalUsedStorage, 1)} used · Raw: ${formatBytes(totalRawUsed, 1)} / ${formatBytes(totalRawCapacity, 1)} (${rawPct.toFixed(1)}%)`}
+              value={formatBytes(totalCapacity, 2)}
+              sub={`${formatBytes(totalUsedStorage, 2)} used · ${rawPct.toFixed(2)}% raw`}
               icon={HardDrive}
               color={usagePct > 90 ? 'var(--danger)' : usagePct > 80 ? 'var(--warning)' : 'var(--accent)'}
             />
@@ -673,12 +724,16 @@ export default function Dashboard({
               color="var(--info)"
             />
             <StatCard
+              label="Used Storage"
+              value={formatBytes(totalUsedBytes, 2)}
+              sub={`Raw (incl. parity): ${formatBytes(totalRawUsed, 2)}`}
+              icon={Database}
+              color={usagePct > 90 ? 'var(--danger)' : usagePct > 80 ? 'var(--warning)' : 'var(--accent)'}
+            />
+            <StatCard
               label="Available Space"
               value={fmtUsableSpace(totalAvailableBytes)}
-              fillLine={fillPrediction
-                ? { text: fillPrediction.text, color: fillPrediction.color, timeText: fillPrediction.timeText }
-                : undefined}
-              sub={`${pctFree.toFixed(1)}% free`}
+              sub={`${pctFree.toFixed(2)}% free`}
               icon={TrendingUp}
               minHeight={160}
               color={
@@ -738,15 +793,10 @@ export default function Dashboard({
                         <YAxis axisLine={false} tickLine={false} tick={AXIS_TICK}
                           tickFormatter={v => {
                             const maxV = ioData.reduce((m: number, d: any) => Math.max(m, d.read || 0, d.write || 0), 0);
-                            return maxV >= 1000 ? `${(v/1000).toFixed(1)}` : `${v.toFixed(0)}`;
+                            return maxV >= 1000 ? `${(v/1000).toFixed(1)}\u00A0GB/s` : `${v.toFixed(0)}\u00A0MB/s`;
                           }}
                           tickCount={MAX_TICKS}
-                          width={60}
-                          label={{
-                            value: ioData.reduce((m: number, d: any) => Math.max(m, d.read||0, d.write||0), 0) >= 1000 ? 'GB/s' : 'MB/s',
-                            angle: -90, position: 'insideLeft', offset: 4,
-                            style: { fill: '#52525b', fontSize: 9, textAnchor: 'middle' }
-                          }}
+                          width={85}
                         />
                         <Tooltip {...TOOLTIP_STYLE} formatter={(v: number, n: string) => [
                           v >= 1000 ? `${(v/1000).toFixed(2)} GB/s` : `${v.toFixed(2)} MB/s`,
@@ -806,28 +856,41 @@ export default function Dashboard({
             <Panel title="Live I/O" sub="Current throughput · 5s refresh">
               <div style={{ display: 'flex' }}>
                 {[
-                  { label: '↑ Read',       value: currentStats.read.toFixed(1),               unit: 'MB/s',  color: '#38bdf8' },
-                  { label: '↓ Write',      value: currentStats.write.toFixed(1),              unit: 'MB/s',  color: '#818cf8' },
-                  { label: '↑ Read IOPS',  value: (currentStats.readIops ?? 0).toFixed(0),    unit: 'ops/s', color: '#38bdf8' },
-                  { label: '↓ Write IOPS', value: (currentStats.writeIops ?? 0).toFixed(0),   unit: 'ops/s', color: '#818cf8' },
-                ].map(({ label, value, unit, color }, i, arr) => (
+                  { label: '↑ Read',       value: `${currentStats.read.toFixed(1)} MB/s`,  color: '#38bdf8' },
+                  { label: '↓ Write',      value: `${currentStats.write.toFixed(1)} MB/s`, color: '#818cf8' },
+                  { label: '↑ Read IOPS',  value: `${(currentStats.readIops ?? 0).toFixed(0)} ops/s`,  color: '#38bdf8' },
+                  { label: '↓ Write IOPS', value: `${(currentStats.writeIops ?? 0).toFixed(0)} ops/s`, color: '#818cf8' },
+                ].map(({ label, value, color }, i, arr) => (
                   <div key={label} style={{ flex: 1, padding: '16px 18px', borderRight: i < arr.length - 1 ? '1px solid var(--border)' : 'none' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
                       <span style={{ width: 6, height: 6, borderRadius: '50%', background: color, flexShrink: 0, display: 'inline-block' }} />
                       <span style={{ fontFamily: 'var(--font-ui)', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>{label}</span>
                     </div>
-                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1, letterSpacing: '-0.02em' }}>{value}</div>
-                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color, marginTop: 4 }}>{unit}</div>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1, letterSpacing: '-0.02em' }}>{value}</div>
                   </div>
                 ))}
               </div>
+              
+              {/* Total Read / Write & Fill Prediction */}
+              <div style={{ display: 'flex', borderTop: '1px solid var(--border)', background: 'var(--bg-elevated)', padding: '12px 18px', gap: 24, fontSize: 11, fontFamily: 'var(--font-mono)' }}>
+                <div style={{ display: 'flex', gap: 16, color: 'var(--text-secondary)' }}>
+                  <span><span style={{ color: '#38bdf8' }}>↑ Gesamt gelesen:</span> {liveMetrics?.total_read_mb ? formatBytes(liveMetrics.total_read_mb * 1024 * 1024, 2) : '0 B'}</span>
+                  <span><span style={{ color: '#818cf8' }}>↓ Gesamt geschrieben:</span> {liveMetrics?.total_write_mb ? formatBytes(liveMetrics.total_write_mb * 1024 * 1024, 2) : '0 B'}</span>
+                </div>
+                {fillPrediction && fillPrediction.timeText && (
+                  <div style={{ marginLeft: 'auto', color: fillPrediction.color, fontWeight: 500 }}>
+                    Prognose: {fillPrediction.text} ({fillPrediction.timeText})
+                  </div>
+                )}
+              </div>
             </Panel>
+
 
             <Panel title="System Resources">
               <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {[
                   { label: 'CPU',    pct: cpuPct, value: `${cpuPct.toFixed(1)}%`,  color: cpuPct > 80 ? 'var(--danger)' : 'var(--accent)' },
-                  { label: 'Memory', pct: memPct, value: memTotal ? `${formatBytes(memUsed, 1)} / ${formatBytes(memTotal, 1)}` : '—', color: memPct > 85 ? 'var(--danger)' : 'var(--info)' },
+                  { label: 'Memory', pct: memPct, value: memTotal ? `${formatBytes(memUsed, 2)} / ${formatBytes(memTotal, 2)}` : '—', color: memPct > 85 ? 'var(--danger)' : 'var(--info)' },
                   { label: 'ARC Hit', pct: arcHit, value: `${arcHit.toFixed(1)}%`, color: 'var(--success)' },
                 ].map(({ label, pct, value, color }) => (
                   <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>

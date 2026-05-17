@@ -6,7 +6,17 @@ use axum::{
 use serde::Deserialize;
 use serde_json::{json, Value};
 
+use std::collections::HashSet;
+use std::sync::OnceLock;
+use tokio::sync::Mutex as TokioMutex;
+
 use crate::{error::ApiError, executor};
+use tracing::{error, info};
+
+fn active_rewrites() -> &'static TokioMutex<HashSet<String>> {
+    static REWRITES: OnceLock<TokioMutex<HashSet<String>>> = OnceLock::new();
+    REWRITES.get_or_init(|| TokioMutex::new(HashSet::new()))
+}
 
 pub fn router() -> Router {
     Router::new()
@@ -19,6 +29,8 @@ pub fn router() -> Router {
         .route("/api/v1/datasets/unmount", post(unmount_dataset))
         .route("/api/v1/datasets/rename", post(rename_dataset))
         .route("/api/v1/datasets/space",  get(dataset_space))
+        .route("/api/v1/datasets/rewrite", post(rewrite_dataset))
+        .route("/api/v1/datasets/rewrite/status", get(rewrite_status))
 }
 
 // ── Bodies ────────────────────────────────────────────────────────────────────
@@ -219,5 +231,81 @@ async fn dataset_space(Query(q): Query<SpaceQuery>) -> Result<Json<Value>, ApiEr
         "refer":       c.get(3).unwrap_or(&""),
         "quota":       c.get(4).unwrap_or(&""),
         "reservation": c.get(5).unwrap_or(&""),
+    })))
+}
+
+async fn rewrite_dataset(Json(body): Json<NameBody>) -> Result<Json<Value>, ApiError> {
+    if body.name.is_empty() {
+        return Err(ApiError::BadRequest("'name' is required".into()));
+    }
+    
+    executor::validate_zfs_name(&body.name, "dataset")?;
+
+    // Get the mountpoint of the dataset
+    let raw = match executor::zfs(&[
+        "list", "-H", "-p",
+        "-o", "mountpoint",
+        &body.name,
+    ]).await {
+        Ok(out) => out,
+        Err(e) => return Err(e),
+    };
+
+    let mountpoint = raw.trim().to_string();
+    if mountpoint.is_empty() || mountpoint == "none" || mountpoint == "legacy" {
+        return Err(ApiError::BadRequest(format!(
+            "Dataset '{}' does not have a valid active mountpoint (mountpoint='{}')",
+            body.name, mountpoint
+        )));
+    }
+
+    let mut lock = active_rewrites().lock().await;
+    if lock.contains(&body.name) {
+        return Ok(Json(json!({ "message": format!("Rewrite already running for '{}'", body.name) })));
+    }
+    lock.insert(body.name.clone());
+    drop(lock);
+
+    let ds_name = body.name.clone();
+    let mount_path = mountpoint.clone();
+    
+    // Spawn background task running on the mountpoint path!
+    tokio::spawn(async move {
+        // Try running via nsenter first (to access host mount namespace)
+        let res = executor::command("nsenter", &["-t", "1", "-m", "--", "zfs", "rewrite", "-r", &mount_path]).await;
+        if let Err(e) = res {
+            error!("Failed to run zfs rewrite via nsenter: {:?}. Falling back to direct execution.", e);
+            // Fallback: run directly inside the container (if mountpoints are mapped)
+            let fallback_res = executor::command("zfs", &["rewrite", "-r", &mount_path]).await;
+            if let Err(fe) = fallback_res {
+                error!("Failed to run zfs rewrite directly: {:?}", fe);
+            } else {
+                info!("Direct zfs rewrite completed successfully for '{}'", ds_name);
+            }
+        } else {
+            info!("Nsenter zfs rewrite completed successfully for '{}'", ds_name);
+        }
+        let mut lock = active_rewrites().lock().await;
+        lock.remove(&ds_name);
+    });
+
+    Ok(Json(json!({ "message": format!("Rewrite started in background for '{}' at '{}'", body.name, mountpoint) })))
+}
+
+#[derive(Deserialize)]
+pub struct StatusQuery {
+    pub name: String,
+}
+
+async fn rewrite_status(Query(q): Query<StatusQuery>) -> Result<Json<Value>, ApiError> {
+    if q.name.is_empty() {
+        return Err(ApiError::BadRequest("query param 'name' is required".into()));
+    }
+    let lock = active_rewrites().lock().await;
+    let is_running = lock.contains(&q.name);
+    
+    Ok(Json(json!({
+        "in_progress": is_running,
+        "name": q.name,
     })))
 }

@@ -3,7 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Activity, Database, Layers,
   Camera, FileText, Settings, HardDrive, LogOut,
-  Server, ChevronLeft, ChevronRight,
+  Server, ChevronLeft, ChevronRight, Bell,
 } from 'lucide-react';
 
 const NAV_GROUPS = [
@@ -25,8 +25,9 @@ const NAV_GROUPS = [
   {
     label: 'System',
     items: [
-      { id: 'logs',     label: 'System Logs', icon: FileText, path: '/logs'     },
-      { id: 'settings', label: 'Settings',    icon: Settings, path: '/settings' },
+      { id: 'logs',          label: 'System Logs',   icon: FileText, path: '/logs'          },
+      { id: 'notifications', label: 'Notifications', icon: Bell,     path: '/notifications' },
+      { id: 'settings',      label: 'Settings',      icon: Settings, path: '/settings'      },
     ],
   },
 ];
@@ -35,6 +36,7 @@ export type Breakpoint = 'mobile' | 'tablet' | 'desktop';
 
 interface SidebarProps {
   systemStats?: any;
+  healthData?: any;
   mobileOpen?: boolean;
   onClose?: () => void;
   collapsed?: boolean;
@@ -44,6 +46,7 @@ interface SidebarProps {
 
 export default function Sidebar({
   systemStats,
+  healthData,
   mobileOpen = false,
   onClose,
   collapsed = false,
@@ -216,6 +219,35 @@ export default function Sidebar({
                   fontFamily: 'var(--font-mono)', fontWeight: 500,
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 }}>{systemStats.hostname}</span>
+              </div>
+            )}
+            {healthData?.version && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <span style={{ fontSize: 11, color: 'var(--text-secondary)', fontFamily: 'var(--font-ui)', fontWeight: 600 }}>ZFS-Manager</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  {healthData?.git?.status === 'out-of-date' || healthData?.git?.upstream_status === 'out-of-date' ? (
+                    <span
+                      title="Update available!"
+                      style={{
+                        width: 6, height: 6, borderRadius: '50%',
+                        background: 'var(--warning)', boxShadow: '0 0 6px var(--warning)',
+                        display: 'inline-block'
+                      }}
+                    />
+                  ) : healthData?.git?.status === 'up-to-date' ? (
+                    <span
+                      title="Up to date"
+                      style={{
+                        width: 6, height: 6, borderRadius: '50%',
+                        background: 'var(--success)',
+                        display: 'inline-block'
+                      }}
+                    />
+                  ) : null}
+                  <span style={{ fontSize: 11, color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
+                    {healthData.version}
+                  </span>
+                </span>
               </div>
             )}
             {systemStats?.zfs_version && (

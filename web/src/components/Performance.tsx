@@ -76,14 +76,14 @@ const AXIS_TICK  = { fill: '#52525b', fontSize: 10 };
 const GRID_PROPS = { strokeDasharray: '1 6' as const, stroke: 'rgba(255,255,255,0.04)', vertical: false };
 
 function getBwScale(maxMB: number): { unit: string; fmt: (v: number) => string } {
-  if (maxMB >= 1000) return { unit: 'GB/s', fmt: v => (v / 1000).toFixed(1) };
-  if (maxMB >= 1)    return { unit: 'MB/s', fmt: v => v.toFixed(0) };
-  return { unit: 'KB/s', fmt: v => (v * 1024).toFixed(0) };
+  if (maxMB >= 1000) return { unit: 'GB/s', fmt: v => `${(v / 1000).toFixed(1)}\u00A0GB/s` };
+  if (maxMB >= 1)    return { unit: 'MB/s', fmt: v => `${v.toFixed(0)}\u00A0MB/s` };
+  return { unit: 'KB/s', fmt: v => `${(v * 1024).toFixed(0)}\u00A0KB/s` };
 }
 
 function getGbScale(maxGB: number): { unit: string; fmt: (v: number) => string } {
-  if (maxGB >= 1000) return { unit: 'TB', fmt: v => (v / 1000).toFixed(1) };
-  return { unit: 'GB', fmt: v => v.toFixed(0) };
+  if (maxGB >= 1000) return { unit: 'TB', fmt: v => `${(v / 1000).toFixed(1)}\u00A0TB` };
+  return { unit: 'GB', fmt: v => `${v.toFixed(0)}\u00A0GB` };
 }
 
 function fmtBw(v: number) {
@@ -164,6 +164,29 @@ function fmtTimeRemaining(freeGb: number, rateGbDay: string): string {
 
 function Skeleton({ height = 200 }: { height?: number }) {
   return <div className="skeleton" style={{ height, borderRadius: 'var(--radius-lg)' }} />;
+}
+
+function fmtGrowthRate(diffGb: number, timeSec: number): string {
+  if (timeSec <= 0 || diffGb === 0) return '0 B/s';
+  const bytesPerSec = (diffGb * 1024 * 1024 * 1024) / timeSec;
+  const sign = bytesPerSec > 0 ? '+' : '';
+  const abs = Math.abs(bytesPerSec);
+  if (abs >= 1024 * 1024 * 1024) return `${sign}${(abs / (1024 * 1024 * 1024)).toFixed(1)} GB/s`;
+  if (abs >= 1024 * 1024) return `${sign}${(abs / (1024 * 1024)).toFixed(1)} MB/s`;
+  if (abs >= 1024) return `${sign}${(abs / 1024).toFixed(0)} KB/s`;
+  return `${sign}${abs.toFixed(0)} B/s`;
+}
+
+function getIntervalLabel(iv: Interval): string {
+  switch (iv) {
+    case '1h': return 'letzte 1h';
+    case '6h': return 'letzte 6h';
+    case '1d': return 'letzte 24h';
+    case '7d': return 'letzte 7d';
+    case '1m': return 'letzter 1M';
+    case '1y': return 'letztes 1Y';
+    default: return 'letzte 24h';
+  }
 }
 
 function Panel({ title, sub, right, children }: {
@@ -584,7 +607,7 @@ export default function Performance({ stats, liveMetrics, serverTimeOffsetMs = 0
                       </defs>
                       <CartesianGrid {...GRID_PROPS} />
                       <XAxis {...(liveMode ? liveXAxisProps : histXAxisProps)} />
-                      <YAxis axisLine={false} tickLine={false} tick={AXIS_TICK} unit={bwScale.unit} tickFormatter={bwScale.fmt} width={40} />
+                      <YAxis axisLine={false} tickLine={false} tick={AXIS_TICK} tickFormatter={bwScale.fmt} width={85} />
                       <Tooltip {...TOOLTIP_STYLE} labelFormatter={(v, pts) => pts?.[0]?.payload?.hhmmss ?? v} formatter={(v: number) => [fmtBw(v), '']} />
                       {vis('read') && <Area type="monotone" dataKey="read" stroke={C.read} fill="url(#gRead)" strokeWidth={2} isAnimationActive={!liveMode} animationDuration={600} />}
                       {vis('write') && <Area type="monotone" dataKey="write" stroke={C.write} fill="url(#gWrite)" strokeWidth={2} isAnimationActive={!liveMode} animationDuration={600} />}
@@ -610,11 +633,18 @@ export default function Performance({ stats, liveMetrics, serverTimeOffsetMs = 0
           </div>
         );
 
-      case 'storage-history':
+      case 'storage-history': {
+        const firstAlloc = chartData.length > 0 ? (chartData[0].alloc || 0) : 0;
+        const lastAlloc = chartData.length > 0 ? (chartData[chartData.length - 1].alloc || 0) : 0;
+        const diffGb = lastAlloc - firstAlloc;
+        const timeSec = chartData.length * secPerPt;
+        const rateStr = fmtGrowthRate(diffGb, timeSec);
+        const rateLabel = getIntervalLabel(interval);
+
         return (
           <Panel
             title="Pool Capacity"
-            sub="Allocation trends"
+            sub={`Allocation trends · Ø ${rateStr} (${rateLabel})`}
             right={
               <div style={{ display: 'flex', gap: 6 }}>
                 <Toggle color={C.alloc} label="Used" active={vis('alloc')} onClick={() => toggle('alloc')} />
@@ -628,7 +658,7 @@ export default function Performance({ stats, liveMetrics, serverTimeOffsetMs = 0
                   <AreaChart data={chartData} margin={CHART_MARGIN}>
                     <CartesianGrid {...GRID_PROPS} />
                     <XAxis {...histXAxisProps} />
-                    <YAxis axisLine={false} tickLine={false} tick={AXIS_TICK} unit={gbScale.unit} tickFormatter={gbScale.fmt} width={40} />
+                    <YAxis axisLine={false} tickLine={false} tick={AXIS_TICK} tickFormatter={gbScale.fmt} width={85} />
                     <Tooltip {...TOOLTIP_STYLE} formatter={(v: number) => [fmtGB(v), '']} />
                     {vis('alloc') && <Area type="stepAfter" dataKey="alloc" stroke={C.alloc} fill={C.alloc + '10'} strokeWidth={2} />}
                     {vis('free')  && <Area type="stepAfter" dataKey="free"  stroke={C.free}  fill={C.free  + '10'} strokeWidth={2} />}
@@ -685,6 +715,7 @@ export default function Performance({ stats, liveMetrics, serverTimeOffsetMs = 0
             )}
           </Panel>
         );
+      }
 
       case 'smart-health':
         return (

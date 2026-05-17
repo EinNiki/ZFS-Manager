@@ -129,10 +129,10 @@ export const api = {
     request<any>('/datasets', { method: 'POST', body: JSON.stringify({ name, options }) }),
   deleteDataset: (name: string, force = false, recursive = false) =>
     request<any>(`/datasets/${name}?force=${force}&recursive=${recursive}`, { method: 'DELETE' }),
-  rewriteDataset: (datasetName: string) => {
-    const poolName = datasetName.split('/')[0];
-    return request<any>(`/pools/${poolName}/resilver`, { method: 'POST' });
-  },
+  rewriteDataset: (datasetName: string) =>
+    request<any>('/datasets/rewrite', { method: 'POST', body: JSON.stringify({ name: datasetName }) }),
+  getRewriteStatus: (datasetName: string) =>
+    request<{ in_progress: boolean, name: string }>(`/datasets/rewrite/status?name=${encodeURIComponent(datasetName)}`),
 
   // ── Dataset Properties ─────────────────────────────────────────────────────
   getDatasetProperties: (name: string, props?: string) =>
@@ -197,6 +197,8 @@ export const api = {
 
   getServerTime: () =>
     request<{ now: string; timezone: string }>('/time'),
+
+  getHealth: () => request<any>('/health'),
 
   // ── Pool Settings ──────────────────────────────────────────────────────────
   getPoolSettings: (name: string) =>
