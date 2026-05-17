@@ -677,7 +677,7 @@ export default function Dashboard({
             <StatCard
               label="Total Storage"
               value={formatBytes(totalCapacity, 2)}
-              sub={`${formatBytes(totalUsedStorage, 2)} used · Raw: ${formatBytes(totalRawUsed, 2)} / ${formatBytes(totalRawCapacity, 2)} (${rawPct.toFixed(2)}%)`}
+              sub={`${formatBytes(totalUsedStorage, 2)} used · ${rawPct.toFixed(2)}% raw`}
               icon={HardDrive}
               color={usagePct > 90 ? 'var(--danger)' : usagePct > 80 ? 'var(--warning)' : 'var(--accent)'}
             />
@@ -707,9 +707,6 @@ export default function Dashboard({
             <StatCard
               label="Available Space"
               value={fmtUsableSpace(totalAvailableBytes)}
-              fillLine={fillPrediction
-                ? { text: fillPrediction.text, color: fillPrediction.color, timeText: fillPrediction.timeText }
-                : undefined}
               sub={`${pctFree.toFixed(2)}% free`}
               icon={TrendingUp}
               minHeight={160}
@@ -770,15 +767,10 @@ export default function Dashboard({
                         <YAxis axisLine={false} tickLine={false} tick={AXIS_TICK}
                           tickFormatter={v => {
                             const maxV = ioData.reduce((m: number, d: any) => Math.max(m, d.read || 0, d.write || 0), 0);
-                            return maxV >= 1000 ? `${(v/1000).toFixed(1)}` : `${v.toFixed(0)}`;
+                            return maxV >= 1000 ? `${(v/1000).toFixed(1)} GB/s` : `${v.toFixed(0)} MB/s`;
                           }}
                           tickCount={MAX_TICKS}
-                          width={60}
-                          label={{
-                            value: ioData.reduce((m: number, d: any) => Math.max(m, d.read||0, d.write||0), 0) >= 1000 ? 'GB/s' : 'MB/s',
-                            angle: -90, position: 'insideLeft', offset: 4,
-                            style: { fill: '#52525b', fontSize: 9, textAnchor: 'middle' }
-                          }}
+                          width={70}
                         />
                         <Tooltip {...TOOLTIP_STYLE} formatter={(v: number, n: string) => [
                           v >= 1000 ? `${(v/1000).toFixed(2)} GB/s` : `${v.toFixed(2)} MB/s`,
@@ -838,18 +830,17 @@ export default function Dashboard({
             <Panel title="Live I/O" sub="Current throughput · 5s refresh">
               <div style={{ display: 'flex' }}>
                 {[
-                  { label: '↑ Read',       value: currentStats.read.toFixed(1),               unit: 'MB/s',  color: '#38bdf8' },
-                  { label: '↓ Write',      value: currentStats.write.toFixed(1),              unit: 'MB/s',  color: '#818cf8' },
-                  { label: '↑ Read IOPS',  value: (currentStats.readIops ?? 0).toFixed(0),    unit: 'ops/s', color: '#38bdf8' },
-                  { label: '↓ Write IOPS', value: (currentStats.writeIops ?? 0).toFixed(0),   unit: 'ops/s', color: '#818cf8' },
-                ].map(({ label, value, unit, color }, i, arr) => (
+                  { label: '↑ Read',       value: `${currentStats.read.toFixed(1)} MB/s`,  color: '#38bdf8' },
+                  { label: '↓ Write',      value: `${currentStats.write.toFixed(1)} MB/s`, color: '#818cf8' },
+                  { label: '↑ Read IOPS',  value: `${(currentStats.readIops ?? 0).toFixed(0)} ops/s`,  color: '#38bdf8' },
+                  { label: '↓ Write IOPS', value: `${(currentStats.writeIops ?? 0).toFixed(0)} ops/s`, color: '#818cf8' },
+                ].map(({ label, value, color }, i, arr) => (
                   <div key={label} style={{ flex: 1, padding: '16px 18px', borderRight: i < arr.length - 1 ? '1px solid var(--border)' : 'none' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
                       <span style={{ width: 6, height: 6, borderRadius: '50%', background: color, flexShrink: 0, display: 'inline-block' }} />
                       <span style={{ fontFamily: 'var(--font-ui)', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>{label}</span>
                     </div>
-                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1, letterSpacing: '-0.02em' }}>{value}</div>
-                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color, marginTop: 4 }}>{unit}</div>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1, letterSpacing: '-0.02em' }}>{value}</div>
                   </div>
                 ))}
               </div>
