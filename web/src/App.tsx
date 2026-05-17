@@ -90,25 +90,6 @@ function TopBar({
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const title = PAGE_TITLES[location.pathname] || 'ZFS Manager';
   const unreadCount = sysNotifications.filter(n => !n.is_read).length;
-  const dropdownRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!dropdownOpen) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [dropdownOpen]);
-
-  const getBellColor = () => {
-    if (unreadCount === 0) return 'var(--text-muted)';
-    if (sysNotifications.some(n => !n.is_read && n.level === 'error')) return 'var(--danger)';
-    if (sysNotifications.some(n => !n.is_read && n.level === 'warning')) return 'var(--warning)';
-    return 'var(--accent)';
-  };
 
   return (
     <header style={{
@@ -144,7 +125,7 @@ function TopBar({
 
       {!onMenuOpen && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <div style={{ position: 'relative' }} ref={dropdownRef}>
+          <div style={{ position: 'relative' }}>
             <button
               onClick={() => setDropdownOpen(!dropdownOpen)}
               style={{
@@ -153,13 +134,7 @@ function TopBar({
                 width: 32, height: 32, borderRadius: '50%', color: 'var(--text-muted)'
               }}
             >
-              <Bell 
-                size={18} 
-                style={{ 
-                  color: getBellColor(), 
-                  transition: 'color 0.25s ease' 
-                }} 
-              />
+              <Bell size={18} />
               {unreadCount > 0 && (
                 <span style={{
                   position: 'absolute', top: 2, right: 2, background: 'var(--danger)',
