@@ -3,7 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Activity, Database, Layers,
   Camera, FileText, Settings, HardDrive, LogOut,
-  Server, ChevronLeft, ChevronRight,
+  Server, ChevronLeft, ChevronRight, Bell,
 } from 'lucide-react';
 
 const NAV_GROUPS = [
@@ -26,8 +26,8 @@ const NAV_GROUPS = [
     label: 'System',
     items: [
       { id: 'logs',          label: 'System Logs',   icon: FileText, path: '/logs'          },
+      { id: 'notifications', label: 'Notifications', icon: Bell,     path: '/notifications' },
       { id: 'settings',      label: 'Settings',      icon: Settings, path: '/settings'      },
-      { id: 'notifications', label: 'Notifications', icon: Activity, path: '/notifications' },
     ],
   },
 ];

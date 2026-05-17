@@ -1334,7 +1334,7 @@ export default function StoragePools({ pools, onRefresh, zfsVersion }: StoragePo
                   <Expand size={12} /> Expand Pool
                 </button>
                 <button className="btn btn-ghost" onClick={() => handleResilver(pool.name)} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11 }}>
-                  <RotateCcw size={12} /> Resilver
+                  <RotateCcw size={12} /> Resilver (Scrub)
                 </button>
               </div>
 

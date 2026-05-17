@@ -22,8 +22,8 @@ const PAGE_TITLES: Record<string, string> = {
   '/datasets':  'Datasets',
   '/snapshots': 'Snapshots',
   '/logs':      'System Logs',
-  '/settings':  'Settings',
   '/notifications': 'Notifications',
+  '/settings':  'Settings',
 };
 
 function getBreakpoint(): Breakpoint {
