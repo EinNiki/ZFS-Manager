@@ -124,115 +124,48 @@ const fieldSelect: React.CSSProperties = {
   paddingRight: 36,
 };
 
-interface PropDef {
-  name: string;
-  label: string;
-  scope: 'dataset';
-  type: 'toggle' | 'select' | 'text';
-  options?: string[];
-}
-
-const DATASET_PROP_DEFS: PropDef[] = [
-  { name: 'compression', label: 'Compression', scope: 'dataset', type: 'select', options: ['off', 'lz4', 'zstd', 'gzip', 'zle'] },
-  { name: 'atime',         label: 'Access Time',        scope: 'dataset', type: 'toggle' },
-  { name: 'relatime',      label: 'Relative Atime',     scope: 'dataset', type: 'toggle' },
-  { name: 'dedup',         label: 'Deduplication',      scope: 'dataset', type: 'toggle' },
-  { name: 'recordsize',    label: 'Record Size',        scope: 'dataset', type: 'select', options: ['512', '1K', '2K', '4K', '8K', '16K', '32K', '64K', '128K', '1M'] },
-  { name: 'xattr',         label: 'Extended Attrs',     scope: 'dataset', type: 'select', options: ['on', 'off', 'sa'] },
-  { name: 'quota',         label: 'Quota',              scope: 'dataset', type: 'text' },
-  { name: 'reservation',   label: 'Reservation',        scope: 'dataset', type: 'text' },
-  { name: 'snapdir',       label: 'Snapshot Dir',       scope: 'dataset', type: 'select', options: ['hidden', 'visible'] },
-  { name: 'sync',          label: 'Sync Mode',          scope: 'dataset', type: 'select', options: ['standard', 'always', 'disabled'] },
-  { name: 'readonly',      label: 'Read-only',          scope: 'dataset', type: 'toggle' },
-];
-
-function PopoutPropRow({
-  def, value, currentValue, onChange,
-}: {
-  def: PropDef; value: string; currentValue: string; onChange: (v: string) => void;
-}) {
-  const changed = value !== currentValue;
-  const inputStyle: React.CSSProperties = {
-    flex: 1, height: 30, padding: '0 8px',
-    background: 'var(--bg-elevated)',
-    border: `1px solid ${changed ? 'var(--accent)' : 'var(--border)'}`,
-    borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)',
-    fontFamily: 'var(--font-mono)', fontSize: 11, outline: 'none',
-  };
-
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--border-subtle)' }}>
-      <div style={{ width: 130, flexShrink: 0 }}>
-        <div style={{ fontSize: 11, fontWeight: 500, color: changed ? 'var(--accent)' : 'var(--text-secondary)', fontFamily: 'var(--font-ui)' }}>
-          {def.label}
-        </div>
-        <div style={{ fontSize: 9, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{def.name}</div>
-      </div>
-
-      {def.type === 'toggle' ? (
-        <button
-          onClick={() => onChange(value === 'on' ? 'off' : 'on')}
-          style={{
-            width: 44, height: 22, borderRadius: 11, flexShrink: 0,
-            background: value === 'on' ? 'var(--success)' : 'var(--bg-elevated)',
-            border: `1px solid ${value === 'on' ? 'var(--success)' : changed ? 'var(--accent)' : 'var(--border)'}`,
-            position: 'relative', cursor: 'pointer', transition: 'all 0.2s',
-          }}
-        >
-          <div style={{
-            position: 'absolute', top: 2,
-            left: value === 'on' ? 22 : 2,
-            width: 16, height: 16, borderRadius: 8,
-            background: '#fff', transition: 'left 0.2s',
-          }} />
-        </button>
-      ) : def.type === 'select' ? (
-        <select value={value} onChange={e => onChange(e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }}>
-          {(def.options || []).map(opt => <option key={opt} value={opt}>{opt}</option>)}
-        </select>
-      ) : (
-        <input
-          type="text"
-          value={value}
-          onChange={e => onChange(e.target.value)}
-          placeholder="value"
-          style={inputStyle}
-        />
-      )}
-    </div>
-  );
-}
-
 function PropertiesModal({ dataset, onClose, onSaved }: {
   dataset: ZFSDataset; onClose: () => void; onSaved: () => void;
 }) {
-  const [props, setProps] = useState<Record<string, string>>({});
-  const [edits, setEdits] = useState<Record<string, string>>({});
+  const [props, setProps] = useState<PropValues>({
+    compression: 'lz4', quotaNum: '', quotaUnit: 'G', atime: 'on', dedup: 'off', readonly: 'off',
+  });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    const propNames = DATASET_PROP_DEFS.map(d => d.name).join(',');
-    api.getDatasetProperties(dataset.name, propNames)
+    api.getDatasetProperties(dataset.name, 'compression,quota,atime,dedup,readonly')
       .then(res => {
         const map: Record<string, string> = {};
         for (const p of (res.properties || [])) map[p.name] = p.value;
-        setProps(map);
-        setEdits({ ...map });
+        const { num, unit } = parseQuotaValue(map['quota'] || '');
+        setProps({
+          compression: map['compression'] || 'lz4',
+          quotaNum: num,
+          quotaUnit: unit,
+          atime: map['atime'] || 'on',
+          dedup: map['dedup'] || 'off',
+          readonly: map['readonly'] || 'off',
+        });
       })
-      .catch((err) => setError(err.message || 'Failed to load properties'))
+      .catch(() => {})
       .finally(() => setLoading(false));
   }, [dataset.name]);
 
   const handleSave = async () => {
-    const changed = Object.entries(edits).filter(([k, v]) => v !== (props[k] ?? ''));
-    if (changed.length === 0) { onClose(); return; }
     setSaving(true); setError('');
     try {
-      for (const [k, v] of changed) {
-        await api.setDatasetProperty(dataset.name, k, v || 'none');
-      }
+      const quotaStr = buildQuotaString(props.quotaNum, props.quotaUnit);
+      await Promise.all([
+        api.setDatasetProperty(dataset.name, 'compression', props.compression),
+        api.setDatasetProperty(dataset.name, 'atime', props.atime),
+        api.setDatasetProperty(dataset.name, 'dedup', props.dedup),
+        api.setDatasetProperty(dataset.name, 'readonly', props.readonly),
+        quotaStr
+          ? api.setDatasetProperty(dataset.name, 'quota', quotaStr)
+          : api.setDatasetProperty(dataset.name, 'quota', 'none'),
+      ]);
       onSaved();
       onClose();
     } catch (err: any) {
@@ -242,7 +175,24 @@ function PropertiesModal({ dataset, onClose, onSaved }: {
     }
   };
 
-  const pendingCount = Object.entries(edits).filter(([k, v]) => v !== (props[k] ?? '')).length;
+  const Toggle = ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
+    <div
+      onClick={() => onChange(value === 'on' ? 'off' : 'on')}
+      style={{
+        width: 40, height: 20, borderRadius: 10, position: 'relative',
+        cursor: 'pointer', transition: 'background 0.2s', flexShrink: 0,
+        background: value === 'on' ? 'var(--info)' : 'rgba(255,255,255,0.06)',
+        border: '1px solid rgba(255,255,255,0.1)',
+      }}
+    >
+      <div style={{
+        position: 'absolute', top: 2,
+        left: value === 'on' ? 21 : 2,
+        width: 14, height: 14, borderRadius: 7,
+        background: '#fff', transition: 'left 0.18s',
+      }} />
+    </div>
+  );
 
   return (
     <Modal title={`Properties — ${dataset.name.split('/').pop()}`} onClose={onClose} maxWidth={520}>
@@ -257,30 +207,58 @@ function PropertiesModal({ dataset, onClose, onSaved }: {
           </div>
         ) : (
           <>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: '55vh', overflowY: 'auto', paddingRight: 4 }} className="no-scrollbar">
-              {DATASET_PROP_DEFS.map(def => (
-                <PopoutPropRow
-                  key={def.name}
-                  def={def}
-                  value={edits[def.name] ?? ''}
-                  currentValue={props[def.name] ?? ''}
-                  onChange={v => setEdits(e => ({ ...e, [def.name]: v }))}
-                />
-              ))}
+            <div>
+              <label style={fieldLabel}>Compression</label>
+              <select value={props.compression} onChange={e => setProps(p => ({ ...p, compression: e.target.value }))} style={fieldSelect}>
+                {['off', 'lz4', 'gzip', 'gzip-1', 'gzip-6', 'gzip-9', 'zstd', 'zstd-fast'].map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
             </div>
 
-            {edits.compression !== props.compression && (
-              <div style={{
-                padding: '10px 12px', borderRadius: 'var(--radius)',
-                background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.3)',
-                color: 'var(--warning)', display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 12
-              }}>
-                <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: 1 }} />
-                <div>
-                  <span style={{ fontWeight: 600 }}>Note:</span> Changing compression only affects new data. To compress existing files, please trigger a <strong>Rewrite</strong> for this dataset after saving.
-                </div>
+            <div>
+              <label style={fieldLabel}>
+                Quota <span style={{ color: 'var(--text-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(empty = no quota)</span>
+              </label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  type="number" min="0" placeholder="e.g. 10"
+                  value={props.quotaNum}
+                  onChange={e => setProps(p => ({ ...p, quotaNum: e.target.value }))}
+                  style={{ ...fieldInput, flex: 1, fontFamily: 'var(--font-mono)' }}
+                />
+                <select value={props.quotaUnit} onChange={e => setProps(p => ({ ...p, quotaUnit: e.target.value as QuotaUnit }))} style={{ ...fieldSelect, width: 80 }}>
+                  <option value="M">MB</option>
+                  <option value="G">GB</option>
+                  <option value="T">TB</option>
+                </select>
               </div>
-            )}
+              {props.quotaNum && (
+                <p style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--accent)', marginTop: 4, opacity: 0.7 }}>
+                  → quota={buildQuotaString(props.quotaNum, props.quotaUnit)}
+                </p>
+              )}
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              {([
+                { key: 'atime',    label: 'Access Time',   desc: 'Track last access time' },
+                { key: 'dedup',    label: 'Deduplication', desc: 'Data dedup (CPU-intensive)' },
+                { key: 'readonly', label: 'Read-only',     desc: 'Prevent write access' },
+              ] as { key: keyof PropValues; label: string; desc: string }[]).map(({ key, label, desc }) => (
+                <div key={key} style={{
+                  padding: '12px 14px', borderRadius: 'var(--radius)',
+                  background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+                  gridColumn: key === 'atime' ? 'span 2' : undefined,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', fontFamily: 'var(--font-ui)' }}>{label}</span>
+                    <Toggle value={props[key] as string} onChange={v => setProps(p => ({ ...p, [key]: v }))} />
+                  </div>
+                  <p style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)', margin: 0 }}>{desc}</p>
+                </div>
+              ))}
+            </div>
 
             {error && (
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 14px', background: 'var(--danger-dim)', border: '1px solid rgba(239,68,68,0.22)', borderRadius: 'var(--radius)' }}>
@@ -289,22 +267,11 @@ function PropertiesModal({ dataset, onClose, onSaved }: {
               </div>
             )}
 
-            {pendingCount > 0 && (
-              <div style={{ fontSize: 11, color: 'var(--accent)', fontFamily: 'var(--font-ui)' }}>
-                {pendingCount} pending change{pendingCount !== 1 ? 's' : ''}
-              </div>
-            )}
-
             <div style={{ display: 'flex', gap: 10 }}>
               <button className="btn btn-secondary" style={{ flex: 1 }} onClick={onClose}>Cancel</button>
-              <button 
-                className="btn btn-primary" 
-                style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }} 
-                onClick={handleSave} 
-                disabled={saving}
-              >
+              <button className="btn btn-primary" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }} onClick={handleSave} disabled={saving}>
                 {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                {saving ? 'Saving...' : pendingCount > 0 ? `Save ${pendingCount} Change${pendingCount !== 1 ? 's' : ''}` : 'Save Changes'}
+                {saving ? 'Saving...' : 'Save'}
               </button>
             </div>
           </>
