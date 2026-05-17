@@ -226,6 +226,7 @@ function PoolCard({ pool, daysUntilFull }: { pool: ZFSPool; daysUntilFull: numbe
   const capColor = pool.cap > 90 ? 'var(--danger)' : pool.cap > 80 ? 'var(--warning)' : 'var(--success)';
 
   const [scrubState,  setScrubState]  = useState<'idle' | 'running' | 'success' | 'error'>('idle');
+  const [scrubProg,   setScrubProg]   = useState<{ progress: number; timeRemaining: string }>({ progress: 0, timeRemaining: '' });
   const [showSnap,    setShowSnap]    = useState(false);
   const [snapName,    setSnapName]    = useState('');
   const [snapError,   setSnapError]   = useState('');
@@ -236,7 +237,11 @@ function PoolCard({ pool, daysUntilFull }: { pool: ZFSPool; daysUntilFull: numbe
 
   useEffect(() => {
     api.getScrubStatus(pool.name).then(res => {
-      if (res.in_progress) { setScrubState('running'); startPoll(); }
+      if (res.in_progress) {
+        setScrubState('running');
+        setScrubProg({ progress: res.progress || 0, timeRemaining: res.time_remaining || '' });
+        startPoll();
+      }
     }).catch(() => {});
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [pool.name]);
@@ -255,7 +260,9 @@ function PoolCard({ pool, daysUntilFull }: { pool: ZFSPool; daysUntilFull: numbe
     pollRef.current = setInterval(async () => {
       try {
         const res = await api.getScrubStatus(pool.name);
-        if (!res.in_progress) {
+        if (res.in_progress) {
+          setScrubProg({ progress: res.progress || 0, timeRemaining: res.time_remaining || '' });
+        } else {
           clearInterval(pollRef.current!); pollRef.current = null;
           setScrubState('success');
           setTimeout(() => setScrubState('idle'), 4000);
@@ -361,6 +368,24 @@ function PoolCard({ pool, daysUntilFull }: { pool: ZFSPool; daysUntilFull: numbe
           color: daysUntilFull < 14 ? 'var(--danger)' : daysUntilFull < 30 ? 'var(--warning)' : 'var(--text-muted)',
         }}>
           Full in <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{fmtDays(daysUntilFull)}</span> at current write rate
+        </div>
+      )}
+
+      {/* Scrub Progress */}
+      {scrubState === 'running' && (
+        <div style={{ marginBottom: 16, padding: '10px 14px', background: 'rgba(245,158,11,0.04)', borderRadius: 'var(--radius)', border: '1px solid rgba(245,158,11,0.2)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+            <span style={{ fontSize: 11, color: 'var(--warning)', fontFamily: 'var(--font-ui)', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} /> Scrubbing
+            </span>
+            <div style={{ display: 'flex', gap: 12, fontSize: 11, fontFamily: 'var(--font-mono)' }}>
+              {scrubProg.timeRemaining && <span style={{ color: 'var(--text-muted)' }}>{scrubProg.timeRemaining} rem</span>}
+              <span style={{ color: 'var(--warning)', fontWeight: 700 }}>{scrubProg.progress.toFixed(1)}%</span>
+            </div>
+          </div>
+          <div style={{ height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 9999, overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: `${scrubProg.progress}%`, background: 'var(--warning)', borderRadius: 9999, transition: 'width 0.5s' }} />
+          </div>
         </div>
       )}
 

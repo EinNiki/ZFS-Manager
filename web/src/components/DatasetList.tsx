@@ -349,10 +349,24 @@ export default function DatasetList({ datasets, volumes = [], pools, onRefresh }
   const [rewriteTarget, setRewriteTarget] = useState<string | null>(null);
   const [toast,         setToast]         = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
+  const [rewriteState,  setRewriteState]  = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     setExpandedNodes(new Set(datasets.map(d => d.name)));
   }, [datasets.length]);
+
+  useEffect(() => {
+    const poll = () => {
+      datasets.forEach(ds => {
+        api.getRewriteStatus(ds.name).then(res => {
+          setRewriteState(s => ({ ...s, [ds.name]: res.in_progress }));
+        }).catch(() => {});
+      });
+    };
+    poll();
+    const id = setInterval(poll, 4000);
+    return () => clearInterval(id);
+  }, [datasets]);
 
   const showToast = (msg: string, type: 'success' | 'error') => {
     setToast({ msg, type });
@@ -435,14 +449,15 @@ export default function DatasetList({ datasets, volumes = [], pools, onRefresh }
   };
 
   const handleRewrite = async (name: string) => {
-    if (!window.confirm(`Start rewrite (scrub) on "${name}"? This will impact performance.`)) return;
-    setRewriteTarget(name);
+    if (!window.confirm(`Start ZFS rewrite on "${name}"? This operation cannot be cancelled and may take a long time.`)) return;
+    setRewriteState(s => ({ ...s, [name]: true }));
     try {
       await api.rewriteDataset(name);
-      showToast(`Rewrite started on pool "${name.split('/')[0]}"`, 'success');
+      showToast(`Rewrite started on "${name}"`, 'success');
     } catch (err: any) {
       showToast(err.message || 'Rewrite failed', 'error');
-    } finally { setRewriteTarget(null); }
+      setRewriteState(s => ({ ...s, [name]: false }));
+    }
   };
 
   const poolMap = useMemo(() => {
@@ -728,14 +743,14 @@ export default function DatasetList({ datasets, volumes = [], pools, onRefresh }
                             <td>
                               <div className="row-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: 4 }}>
                                 <button
-                                  title="Scrub pool"
+                                  title="Rewrite Data (rebalance)"
                                   onClick={() => handleRewrite(ds.name)}
-                                  disabled={rewriteTarget === ds.name}
+                                  disabled={rewriteState[ds.name]}
                                   style={ACT_BTN}
                                   onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = 'var(--info)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(56,189,248,0.3)'; }}
                                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'var(--text-muted)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--border)'; }}
                                 >
-                                  {rewriteTarget === ds.name ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
+                                  {rewriteState[ds.name] ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
                                 </button>
                                 <button
                                   title="Properties"
