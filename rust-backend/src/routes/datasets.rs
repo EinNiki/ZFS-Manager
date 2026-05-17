@@ -6,7 +6,16 @@ use axum::{
 use serde::Deserialize;
 use serde_json::{json, Value};
 
+use std::collections::HashSet;
+use std::sync::OnceLock;
+use tokio::sync::Mutex as TokioMutex;
+
 use crate::{error::ApiError, executor};
+
+fn active_rewrites() -> &'static TokioMutex<HashSet<String>> {
+    static REWRITES: OnceLock<TokioMutex<HashSet<String>>> = OnceLock::new();
+    REWRITES.get_or_init(|| TokioMutex::new(HashSet::new()))
+}
 
 pub fn router() -> Router {
     Router::new()
@@ -19,6 +28,8 @@ pub fn router() -> Router {
         .route("/api/v1/datasets/unmount", post(unmount_dataset))
         .route("/api/v1/datasets/rename", post(rename_dataset))
         .route("/api/v1/datasets/space",  get(dataset_space))
+        .route("/api/v1/datasets/rewrite", post(rewrite_dataset))
+        .route("/api/v1/datasets/rewrite/status", get(rewrite_status))
 }
 
 // ── Bodies ────────────────────────────────────────────────────────────────────
@@ -219,5 +230,47 @@ async fn dataset_space(Query(q): Query<SpaceQuery>) -> Result<Json<Value>, ApiEr
         "refer":       c.get(3).unwrap_or(&""),
         "quota":       c.get(4).unwrap_or(&""),
         "reservation": c.get(5).unwrap_or(&""),
+    })))
+}
+
+async fn rewrite_dataset(Json(body): Json<NameBody>) -> Result<Json<Value>, ApiError> {
+    if body.name.is_empty() {
+        return Err(ApiError::BadRequest("'name' is required".into()));
+    }
+    
+    let mut lock = active_rewrites().lock().await;
+    if lock.contains(&body.name) {
+        return Ok(Json(json!({ "message": format!("Rewrite already running for '{}'", body.name) })));
+    }
+    lock.insert(body.name.clone());
+    drop(lock);
+
+    let ds_name = body.name.clone();
+    
+    // Spawn background task
+    tokio::spawn(async move {
+        let _ = executor::zfs(&["rewrite", "-r", &ds_name]).await;
+        let mut lock = active_rewrites().lock().await;
+        lock.remove(&ds_name);
+    });
+
+    Ok(Json(json!({ "message": format!("Rewrite started in background for '{}'", body.name) })))
+}
+
+#[derive(Deserialize)]
+pub struct StatusQuery {
+    pub name: String,
+}
+
+async fn rewrite_status(Query(q): Query<StatusQuery>) -> Result<Json<Value>, ApiError> {
+    if q.name.is_empty() {
+        return Err(ApiError::BadRequest("query param 'name' is required".into()));
+    }
+    let lock = active_rewrites().lock().await;
+    let is_running = lock.contains(&q.name);
+    
+    Ok(Json(json!({
+        "in_progress": is_running,
+        "name": q.name,
     })))
 }
