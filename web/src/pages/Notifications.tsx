@@ -2,6 +2,36 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../api';
 import { Bell, Trash2, Plus, Mail, MessageSquare, Globe, Send, BellOff, AlertTriangle, Edit2 } from 'lucide-react';
 
+/* ── Shared Local Styles & Components ── */
+function SectionHeader({ title, sub }: { title: string; sub?: string }) {
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <h2 style={{ fontFamily: 'var(--font-ui)', fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.01em', margin: 0 }}>
+        {title}
+      </h2>
+      {sub && (
+        <p style={{ fontFamily: 'var(--font-ui)', fontSize: 13, color: 'var(--text-muted)', marginTop: 4, margin: 0, lineHeight: 1.4 }}>
+          {sub}
+        </p>
+      )}
+    </div>
+  );
+}
+
+const inputStyle: React.CSSProperties = {
+  width: '100%', height: 40, padding: '0 12px',
+  background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+  borderRadius: 'var(--radius)', color: 'var(--text-primary)',
+  fontFamily: 'var(--font-ui)', fontSize: 14, outline: 'none',
+  boxSizing: 'border-box', transition: 'all 0.15s ease',
+};
+
+const labelStyle: React.CSSProperties = {
+  display: 'block', fontFamily: 'var(--font-ui)', fontSize: 11,
+  fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase',
+  letterSpacing: '0.08em', marginBottom: 8,
+};
+
 export default function Notifications() {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [channels, setChannels] = useState<any[]>([]);
@@ -282,61 +312,70 @@ export default function Notifications() {
 
   const getChannelIcon = (type: string) => {
     switch(type) {
-      case 'webhook': return <Globe size={16} className="text-muted" />;
-      case 'discord': return <MessageSquare size={16} style={{ color: '#5865F2' }} />;
-      case 'gotify': return <Bell size={16} style={{ color: '#4d94ff' }} />;
-      case 'telegram': return <Send size={16} style={{ color: '#0088cc' }} />;
-      case 'email': return <Mail size={16} style={{ color: '#ea4335' }} />;
-      default: return <Globe size={16} />;
+      case 'webhook': return <Globe size={15} style={{ color: 'var(--text-muted)' }} />;
+      case 'discord': return <MessageSquare size={15} style={{ color: '#5865F2' }} />;
+      case 'gotify': return <Bell size={15} style={{ color: '#3b82f6' }} />;
+      case 'telegram': return <Send size={15} style={{ color: '#0088cc' }} />;
+      case 'email': return <Mail size={15} style={{ color: '#ef4444' }} />;
+      default: return <Globe size={15} />;
     }
   };
 
   return (
-    <div style={{ maxWidth: 1100, margin: '0 auto', padding: '0 20px' }}>
+    <div style={{ paddingBottom: 48 }}>
+      {/* Page header */}
       <div style={{ marginBottom: 32 }}>
-        <h1 style={{ fontSize: 26, fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: 12 }}>
-          <Bell size={28} style={{ color: 'var(--accent)' }} />
-          System Notifications & Integrations
+        <h1 style={{
+          fontFamily: 'var(--font-ui)', fontSize: 20, fontWeight: 700,
+          color: 'var(--text-primary)', letterSpacing: '-0.02em', marginBottom: 4,
+          display: 'flex', alignItems: 'center', gap: 10
+        }}>
+          <Bell size={20} style={{ color: 'var(--accent)' }} />
+          Notifications & Integrations
         </h1>
-        <p style={{ color: 'var(--text-muted)', marginTop: 6, fontSize: 14 }}>
-          Manage your external alert channels and design automation trigger rules for ZFS diagnostics.
+        <p style={{ fontFamily: 'var(--font-ui)', fontSize: 13, color: 'var(--text-muted)' }}>
+          Manage external alert channels and design automation trigger rules for ZFS diagnostics
         </p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: 24, marginBottom: 24 }}>
         
         {/* Rules Panel */}
-        <div className="panel" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <h2 style={{ fontSize: 15, fontWeight: 600, margin: 0 }}>Active Diagnostic Rules</h2>
-              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Trigger notifications on system events</span>
-            </div>
-            <button className="btn btn-primary" style={{ padding: '6px 12px', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }} onClick={() => { setEditingRuleId(null); setNewRule({ name: '', trigger_type: 'login_failed', threshold_value: '', channel_ids: [], is_active: true }); setSelectedDataset(''); setShowRuleModal(true); }}>
-              <Plus size={15} /> Add Rule
+        <div style={{
+          background: 'var(--bg-surface)', border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-lg)', padding: 28, display: 'flex', flexDirection: 'column'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+            <SectionHeader
+              title="Active Diagnostic Rules"
+              sub="Trigger external notifications on custom system events."
+            />
+            <button className="btn btn-primary" style={{ padding: '0 12px', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, height: 32 }} onClick={() => { setEditingRuleId(null); setNewRule({ name: '', trigger_type: 'login_failed', threshold_value: '', channel_ids: [], is_active: true }); setSelectedDataset(''); setShowRuleModal(true); }}>
+              <Plus size={14} /> Add Rule
             </button>
           </div>
-          <div style={{ padding: '20px 24px', flex: 1 }}>
+
+          <div style={{ flex: 1 }}>
             {rules.length === 0 ? (
-              <div style={{ color: 'var(--text-muted)', fontSize: 13, textAlign: 'center', padding: '32px 0' }}>
-                <BellOff size={32} style={{ margin: '0 auto 12px', display: 'block', opacity: 0.5 }} />
+              <div style={{ color: 'var(--text-muted)', fontSize: 13, textAlign: 'center', padding: '40px 0' }}>
+                <BellOff size={28} style={{ margin: '0 auto 12px', display: 'block', opacity: 0.4 }} />
                 No rules active. Add a rule to trigger alerts.
               </div>
             ) : (
               rules.map(r => (
-                <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: '1px solid var(--border-subtle)' }}>
+                <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', borderRadius: 'var(--radius)', background: 'var(--bg-elevated)', border: '1px solid var(--border)', marginBottom: 8 }}>
                   <div>
-                    <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)' }}>{r.name}</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-primary)', fontFamily: 'var(--font-ui)' }}>{r.name}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4, fontFamily: 'var(--font-ui)' }}>
                       Trigger: <strong style={{ color: 'var(--accent)' }}>{displayTriggerType(r.trigger_type)}</strong> {r.threshold_value !== null ? `(${r.threshold_value})` : ''}
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button className="btn btn-secondary" style={{ padding: '6px 10px' }} onClick={() => startEditRule(r)}>
-                      <Edit2 size={14} style={{ color: 'var(--accent)' }} />
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button className="btn btn-secondary" style={{ width: 30, height: 30, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => startEditRule(r)}>
+                      <Edit2 size={13} style={{ color: 'var(--accent)' }} />
                     </button>
-                    <button className="btn btn-secondary" style={{ padding: '6px 10px' }} onClick={() => deleteRule(r.id)}>
-                      <Trash2 size={14} style={{ color: 'var(--danger)' }} />
+                    <button className="btn btn-secondary" style={{ width: 30, height: 30, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => deleteRule(r.id)}>
+                      <Trash2 size={13} style={{ color: 'var(--danger)' }} />
                     </button>
                   </div>
                 </div>
@@ -346,43 +385,47 @@ export default function Notifications() {
         </div>
 
         {/* Channels Panel */}
-        <div className="panel" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <h2 style={{ fontSize: 15, fontWeight: 600, margin: 0 }}>Notification Channels</h2>
-              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Delivery end-points for triggers</span>
-            </div>
-            <button className="btn btn-primary" style={{ padding: '6px 12px', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }} onClick={() => { setEditingChannelId(null); setNewChannel(initialChannelState); setShowChannelModal(true); }}>
-              <Plus size={15} /> Add Channel
+        <div style={{
+          background: 'var(--bg-surface)', border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-lg)', padding: 28, display: 'flex', flexDirection: 'column'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+            <SectionHeader
+              title="Notification Channels"
+              sub="Delivery end-points for triggers."
+            />
+            <button className="btn btn-primary" style={{ padding: '0 12px', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, height: 32 }} onClick={() => { setEditingChannelId(null); setNewChannel(initialChannelState); setShowChannelModal(true); }}>
+              <Plus size={14} /> Add Channel
             </button>
           </div>
-          <div style={{ padding: '20px 24px', flex: 1 }}>
+
+          <div style={{ flex: 1 }}>
             {channels.length === 0 ? (
-              <div style={{ color: 'var(--text-muted)', fontSize: 13, textAlign: 'center', padding: '32px 0' }}>
-                <Globe size={32} style={{ margin: '0 auto 12px', display: 'block', opacity: 0.5 }} />
+              <div style={{ color: 'var(--text-muted)', fontSize: 13, textAlign: 'center', padding: '40px 0' }}>
+                <Globe size={28} style={{ margin: '0 auto 12px', display: 'block', opacity: 0.4 }} />
                 No notification channels. Add Webhooks, Discord, or Email.
               </div>
             ) : (
               channels.map(c => (
-                <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: '1px solid var(--border-subtle)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', borderRadius: 'var(--radius)', background: 'var(--bg-elevated)', border: '1px solid var(--border)', marginBottom: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                       {getChannelIcon(c.ctype)}
                     </div>
                     <div>
-                      <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)' }}>{c.name}</div>
-                      <div style={{ fontSize: 12, color: 'var(--text-muted)', textTransform: 'capitalize' }}>Type: {c.ctype}</div>
+                      <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-primary)', fontFamily: 'var(--font-ui)' }}>{c.name}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'capitalize', marginTop: 2, fontFamily: 'var(--font-ui)' }}>Type: {c.ctype}</div>
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button className="btn btn-secondary" style={{ padding: '6px 10px', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }} onClick={() => testChannel(c.id)}>
-                      <Send size={13} style={{ color: 'var(--accent)' }} /> Test
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button className="btn btn-secondary" style={{ height: 30, padding: '0 10px', display: 'flex', alignItems: 'center', gap: 4, fontSize: 11 }} onClick={() => testChannel(c.id)}>
+                      <Send size={11} style={{ color: 'var(--accent)' }} /> Test
                     </button>
-                    <button className="btn btn-secondary" style={{ padding: '6px 10px' }} onClick={() => startEditChannel(c)}>
-                      <Edit2 size={14} style={{ color: 'var(--accent)' }} />
+                    <button className="btn btn-secondary" style={{ width: 30, height: 30, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => startEditChannel(c)}>
+                      <Edit2 size={13} style={{ color: 'var(--accent)' }} />
                     </button>
-                    <button className="btn btn-secondary" style={{ padding: '6px 10px' }} onClick={() => deleteChannel(c.id)}>
-                      <Trash2 size={14} style={{ color: 'var(--danger)' }} />
+                    <button className="btn btn-secondary" style={{ width: 30, height: 30, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => deleteChannel(c.id)}>
+                      <Trash2 size={13} style={{ color: 'var(--danger)' }} />
                     </button>
                   </div>
                 </div>
@@ -393,25 +436,29 @@ export default function Notifications() {
       </div>
 
       {/* History Log */}
-      <div className="panel" style={{ marginTop: 32, background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)' }}>
-        <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)' }}>
-          <h2 style={{ fontSize: 15, fontWeight: 600, margin: 0 }}>System Notifications Log</h2>
-          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Historical logs of all triggered alerts</span>
-        </div>
-        <div style={{ padding: '20px 24px' }}>
+      <div style={{
+        background: 'var(--bg-surface)', border: '1px solid var(--border)',
+        borderRadius: 'var(--radius-lg)', padding: 28
+      }}>
+        <SectionHeader
+          title="System Notifications Log"
+          sub="Historical archive of all triggered alerts."
+        />
+
+        <div style={{ marginTop: 20 }}>
           {notifications.length === 0 ? (
-            <div style={{ color: 'var(--text-muted)', fontSize: 13, textAlign: 'center', padding: '24px 0' }}>
-              No notifications logs present.
+            <div style={{ color: 'var(--text-muted)', fontSize: 13, textAlign: 'center', padding: '32px 0' }}>
+              No notification logs present.
             </div>
           ) : (
             notifications.map(n => (
-              <div key={n.id} style={{ padding: '12px 0', borderBottom: '1px solid var(--border-subtle)', display: 'flex', gap: 16, alignItems: 'center' }}>
-                <div style={{ width: 8, height: 8, borderRadius: '50%', background: n.is_read ? 'var(--text-muted)' : 'var(--danger)', flexShrink: 0 }} />
+              <div key={n.id} style={{ padding: '12px 14px', borderRadius: 'var(--radius)', background: 'var(--bg-elevated)', border: '1px solid var(--border)', marginBottom: 8, display: 'flex', gap: 16, alignItems: 'center' }}>
+                <div style={{ width: 6, height: 6, borderRadius: '50%', background: n.is_read ? 'var(--text-muted)' : 'var(--danger)', flexShrink: 0 }} />
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: n.is_read ? 400 : 500 }}>{n.message}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{new Date(n.created_at).toLocaleString()}</div>
+                  <div style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: n.is_read ? 400 : 600, fontFamily: 'var(--font-ui)' }}>{n.message}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4, fontFamily: 'var(--font-mono)' }}>{new Date(n.created_at).toLocaleString()}</div>
                 </div>
-                <span className={`badge ${n.level === 'error' ? 'badge-danger' : 'badge-warning'}`} style={{ textTransform: 'uppercase', fontSize: 10 }}>{n.level}</span>
+                <span className={`badge ${n.level === 'error' ? 'badge-danger' : 'badge-warning'}`} style={{ textTransform: 'uppercase', fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 4 }}>{n.level}</span>
               </div>
             ))
           )}
@@ -420,19 +467,21 @@ export default function Notifications() {
 
       {/* RICH CHANNEL MODAL (Larger Popup) */}
       {showChannelModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}>
-          <div style={{ background: 'var(--bg-surface)', padding: 28, borderRadius: 'var(--radius-lg)', border: '1px solid var(--border)', maxWidth: 580, width: '100%', boxShadow: '0 12px 40px rgba(0,0,0,0.5)' }}>
-            <h3 style={{ margin: '0 0 8px 0', fontSize: 18, fontWeight: 700 }}>{editingChannelId ? 'Edit Delivery Channel' : 'Configure Delivery Channel'}</h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 20 }}>{editingChannelId ? 'Modify notification endpoint settings.' : 'Create an external notification channel for system messages.'}</p>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20, backdropFilter: 'blur(8px)' }}>
+          <div style={{ background: 'var(--bg-surface)', padding: 28, borderRadius: 'var(--radius-lg)', border: '1px solid var(--border)', maxWidth: 580, width: '100%', boxShadow: '0 20px 50px rgba(0,0,0,0.6)' }}>
+            <SectionHeader
+              title={editingChannelId ? 'Edit Delivery Channel' : 'Configure Delivery Channel'}
+              sub={editingChannelId ? 'Modify notification endpoint settings.' : 'Create an external notification channel for system messages.'}
+            />
             
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
               <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 500, marginBottom: 6 }}>Channel Display Name</label>
-                <input className="input" value={newChannel.name} onChange={e => setNewChannel({...newChannel, name: e.target.value})} placeholder="e.g. My Telegram Bot" style={{ width: '100%' }} />
+                <label style={labelStyle}>Channel Display Name</label>
+                <input className="input" style={inputStyle} value={newChannel.name} onChange={e => setNewChannel({...newChannel, name: e.target.value})} placeholder="e.g. My Telegram Bot" />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 500, marginBottom: 6 }}>Channel Type</label>
-                <select className="input" value={newChannel.ctype} onChange={e => setNewChannel({...newChannel, ctype: e.target.value})} style={{ width: '100%' }}>
+                <label style={labelStyle}>Channel Type</label>
+                <select className="input" style={inputStyle} value={newChannel.ctype} onChange={e => setNewChannel({...newChannel, ctype: e.target.value})}>
                   <option value="webhook">General Webhook</option>
                   <option value="discord">Discord Integration</option>
                   <option value="gotify">Gotify Server</option>
@@ -448,21 +497,21 @@ export default function Notifications() {
               {newChannel.ctype === 'webhook' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Webhook Endpoint URL</label>
-                    <input className="input" value={newChannel.webhook_url} onChange={e => setNewChannel({...newChannel, webhook_url: e.target.value})} placeholder="https://api.myendpoint.com/v1/alert" style={{ width: '100%' }} />
+                    <label style={labelStyle}>Webhook Endpoint URL</label>
+                    <input className="input" style={inputStyle} value={newChannel.webhook_url} onChange={e => setNewChannel({...newChannel, webhook_url: e.target.value})} placeholder="https://api.myendpoint.com/v1/alert" />
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr', gap: 16 }}>
                     <div>
-                      <label style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>HTTP Method</label>
-                      <select className="input" value={newChannel.webhook_method} onChange={e => setNewChannel({...newChannel, webhook_method: e.target.value})} style={{ width: '100%' }}>
+                      <label style={labelStyle}>HTTP Method</label>
+                      <select className="input" style={inputStyle} value={newChannel.webhook_method} onChange={e => setNewChannel({...newChannel, webhook_method: e.target.value})}>
                         <option value="POST">POST</option>
                         <option value="PUT">PUT</option>
                         <option value="GET">GET</option>
                       </select>
                     </div>
                     <div>
-                      <label style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Custom Headers (JSON)</label>
-                      <input className="input" value={newChannel.webhook_headers} onChange={e => setNewChannel({...newChannel, webhook_headers: e.target.value})} placeholder='{"Authorization": "Bearer token"}' style={{ width: '100%' }} />
+                      <label style={labelStyle}>Custom Headers (JSON)</label>
+                      <input className="input" style={inputStyle} value={newChannel.webhook_headers} onChange={e => setNewChannel({...newChannel, webhook_headers: e.target.value})} placeholder='{"Authorization": "Bearer token"}' />
                     </div>
                   </div>
                 </div>
@@ -472,17 +521,17 @@ export default function Notifications() {
               {newChannel.ctype === 'discord' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Discord Webhook URL</label>
-                    <input className="input" value={newChannel.discord_url} onChange={e => setNewChannel({...newChannel, discord_url: e.target.value})} placeholder="https://discord.com/api/webhooks/..." style={{ width: '100%' }} />
+                    <label style={labelStyle}>Discord Webhook URL</label>
+                    <input className="input" style={inputStyle} value={newChannel.discord_url} onChange={e => setNewChannel({...newChannel, discord_url: e.target.value})} placeholder="https://discord.com/api/webhooks/..." />
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                     <div>
-                      <label style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Bot Username Override</label>
-                      <input className="input" value={newChannel.discord_username} onChange={e => setNewChannel({...newChannel, discord_username: e.target.value})} placeholder="ZFS Manager" style={{ width: '100%' }} />
+                      <label style={labelStyle}>Bot Username Override</label>
+                      <input className="input" style={inputStyle} value={newChannel.discord_username} onChange={e => setNewChannel({...newChannel, discord_username: e.target.value})} placeholder="ZFS Manager" />
                     </div>
                     <div>
-                      <label style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Avatar URL (Optional)</label>
-                      <input className="input" value={newChannel.discord_avatar} onChange={e => setNewChannel({...newChannel, discord_avatar: e.target.value})} placeholder="https://..." style={{ width: '100%' }} />
+                      <label style={labelStyle}>Avatar URL (Optional)</label>
+                      <input className="input" style={inputStyle} value={newChannel.discord_avatar} onChange={e => setNewChannel({...newChannel, discord_avatar: e.target.value})} placeholder="https://..." />
                     </div>
                   </div>
                 </div>
@@ -492,17 +541,17 @@ export default function Notifications() {
               {newChannel.ctype === 'gotify' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Gotify Server Base URL</label>
-                    <input className="input" value={newChannel.gotify_url} onChange={e => setNewChannel({...newChannel, gotify_url: e.target.value})} placeholder="https://gotify.mydomain.com" style={{ width: '100%' }} />
+                    <label style={labelStyle}>Gotify Server Base URL</label>
+                    <input className="input" style={inputStyle} value={newChannel.gotify_url} onChange={e => setNewChannel({...newChannel, gotify_url: e.target.value})} placeholder="https://gotify.mydomain.com" />
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px', gap: 16 }}>
                     <div>
-                      <label style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Gotify Application Token</label>
-                      <input className="input" type="password" value={newChannel.gotify_token} onChange={e => setNewChannel({...newChannel, gotify_token: e.target.value})} placeholder="A_TokenString" style={{ width: '100%' }} />
+                      <label style={labelStyle}>Gotify Application Token</label>
+                      <input className="input" type="password" style={inputStyle} value={newChannel.gotify_token} onChange={e => setNewChannel({...newChannel, gotify_token: e.target.value})} placeholder="A_TokenString" />
                     </div>
                     <div>
-                      <label style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Default Priority</label>
-                      <input className="input" type="number" min="0" max="10" value={newChannel.gotify_priority} onChange={e => setNewChannel({...newChannel, gotify_priority: e.target.value})} style={{ width: '100%' }} />
+                      <label style={labelStyle}>Default Priority</label>
+                      <input className="input" type="number" min="0" max="10" style={inputStyle} value={newChannel.gotify_priority} onChange={e => setNewChannel({...newChannel, gotify_priority: e.target.value})} />
                     </div>
                   </div>
                 </div>
@@ -512,12 +561,12 @@ export default function Notifications() {
               {newChannel.ctype === 'telegram' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Telegram Bot Token</label>
-                    <input className="input" type="password" value={newChannel.telegram_bot_token} onChange={e => setNewChannel({...newChannel, telegram_bot_token: e.target.value})} placeholder="123456:ABC-DEF1234ghIkl-zyx" style={{ width: '100%' }} />
+                    <label style={labelStyle}>Telegram Bot Token</label>
+                    <input className="input" type="password" style={inputStyle} value={newChannel.telegram_bot_token} onChange={e => setNewChannel({...newChannel, telegram_bot_token: e.target.value})} placeholder="123456:ABC-DEF1234ghIkl-zyx" />
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Telegram Chat ID</label>
-                    <input className="input" value={newChannel.telegram_chat_id} onChange={e => setNewChannel({...newChannel, telegram_chat_id: e.target.value})} placeholder="e.g. -100123456789 or 987654321" style={{ width: '100%' }} />
+                    <label style={labelStyle}>Telegram Chat ID</label>
+                    <input className="input" style={inputStyle} value={newChannel.telegram_chat_id} onChange={e => setNewChannel({...newChannel, telegram_chat_id: e.target.value})} placeholder="e.g. -100123456789 or 987654321" />
                   </div>
                 </div>
               )}
@@ -527,32 +576,32 @@ export default function Notifications() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px', gap: 16 }}>
                     <div>
-                      <label style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>SMTP Host Server</label>
-                      <input className="input" value={newChannel.email_host} onChange={e => setNewChannel({...newChannel, email_host: e.target.value})} placeholder="smtp.gmail.com" style={{ width: '100%' }} />
+                      <label style={labelStyle}>SMTP Host Server</label>
+                      <input className="input" style={inputStyle} value={newChannel.email_host} onChange={e => setNewChannel({...newChannel, email_host: e.target.value})} placeholder="smtp.gmail.com" />
                     </div>
                     <div>
-                      <label style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>SMTP Port</label>
-                      <input className="input" value={newChannel.email_port} onChange={e => setNewChannel({...newChannel, email_port: e.target.value})} placeholder="587" style={{ width: '100%' }} />
-                    </div>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                    <div>
-                      <label style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>SMTP Username</label>
-                      <input className="input" value={newChannel.email_username} onChange={e => setNewChannel({...newChannel, email_username: e.target.value})} placeholder="user@gmail.com" style={{ width: '100%' }} />
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>SMTP Password</label>
-                      <input className="input" type="password" value={newChannel.email_password} onChange={e => setNewChannel({...newChannel, email_password: e.target.value})} placeholder="••••••••••••" style={{ width: '100%' }} />
+                      <label style={labelStyle}>SMTP Port</label>
+                      <input className="input" style={inputStyle} value={newChannel.email_port} onChange={e => setNewChannel({...newChannel, email_port: e.target.value})} placeholder="587" />
                     </div>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                     <div>
-                      <label style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>From Email Address</label>
-                      <input className="input" value={newChannel.email_from} onChange={e => setNewChannel({...newChannel, email_from: e.target.value})} placeholder="noreply@mydomain.com" style={{ width: '100%' }} />
+                      <label style={labelStyle}>SMTP Username</label>
+                      <input className="input" style={inputStyle} value={newChannel.email_username} onChange={e => setNewChannel({...newChannel, email_username: e.target.value})} placeholder="user@gmail.com" />
                     </div>
                     <div>
-                      <label style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>To Recipient Address</label>
-                      <input className="input" value={newChannel.email_to} onChange={e => setNewChannel({...newChannel, email_to: e.target.value})} placeholder="admin@mydomain.com" style={{ width: '100%' }} />
+                      <label style={labelStyle}>SMTP Password</label>
+                      <input className="input" type="password" style={inputStyle} value={newChannel.email_password} onChange={e => setNewChannel({...newChannel, email_password: e.target.value})} placeholder="••••••••••••" />
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                    <div>
+                      <label style={labelStyle}>From Email Address</label>
+                      <input className="input" style={inputStyle} value={newChannel.email_from} onChange={e => setNewChannel({...newChannel, email_from: e.target.value})} placeholder="noreply@mydomain.com" />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>To Recipient Address</label>
+                      <input className="input" style={inputStyle} value={newChannel.email_to} onChange={e => setNewChannel({...newChannel, email_to: e.target.value})} placeholder="admin@mydomain.com" />
                     </div>
                   </div>
                 </div>
@@ -570,27 +619,29 @@ export default function Notifications() {
 
       {/* RICH RULE MODAL (Larger Popup) */}
       {showRuleModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}>
-          <div style={{ background: 'var(--bg-surface)', padding: 28, borderRadius: 'var(--radius-lg)', border: '1px solid var(--border)', maxWidth: 580, width: '100%', boxShadow: '0 12px 40px rgba(0,0,0,0.5)' }}>
-            <h3 style={{ margin: '0 0 8px 0', fontSize: 18, fontWeight: 700 }}>{editingRuleId ? 'Edit Diagnostic Rule' : 'Create Diagnostic Rule'}</h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 20 }}>{editingRuleId ? 'Modify configuration options for this alert trigger.' : 'Define threshold conditions that trigger automated notifications.'}</p>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20, backdropFilter: 'blur(8px)' }}>
+          <div style={{ background: 'var(--bg-surface)', padding: 28, borderRadius: 'var(--radius-lg)', border: '1px solid var(--border)', maxWidth: 580, width: '100%', boxShadow: '0 20px 50px rgba(0,0,0,0.6)' }}>
+            <SectionHeader
+              title={editingRuleId ? 'Edit Diagnostic Rule' : 'Create Diagnostic Rule'}
+              sub={editingRuleId ? 'Modify configuration options for this alert trigger.' : 'Define threshold conditions that trigger automated notifications.'}
+            />
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 500, marginBottom: 6 }}>Rule Name / Alias</label>
-                <input className="input" value={newRule.name} onChange={e => setNewRule({...newRule, name: e.target.value})} placeholder="e.g. Critical Hard Drive Temp Alert" style={{ width: '100%' }} />
+                <label style={labelStyle}>Rule Name / Alias</label>
+                <input className="input" style={inputStyle} value={newRule.name} onChange={e => setNewRule({...newRule, name: e.target.value})} placeholder="e.g. Critical Hard Drive Temp Alert" />
               </div>
               
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 500, marginBottom: 6 }}>Trigger Type</label>
-                  <select className="input" value={newRule.trigger_type} onChange={e => {
+                  <label style={labelStyle}>Trigger Type</label>
+                  <select className="input" style={inputStyle} value={newRule.trigger_type} onChange={e => {
                     const val = e.target.value;
                     setNewRule({...newRule, trigger_type: val});
                     if (val !== 'quota_reached') {
                       setSelectedDataset('');
                     }
-                  }} style={{ width: '100%' }}>
+                  }}>
                     <option value="login_failed">Failed Login Attempt (Interface)</option>
                     <option value="pool_unhealthy">Pool Unhealthy (DEGRADED/FAULTED)</option>
                     <option value="hdd_temp">HDD Temperature {'>'} Threshold (°C)</option>
@@ -608,15 +659,15 @@ export default function Notifications() {
                 </div>
                 
                 <div>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 500, marginBottom: 6 }}>Threshold Value (Optional)</label>
-                  <input className="input" type="number" value={newRule.threshold_value} onChange={e => setNewRule({...newRule, threshold_value: e.target.value})} placeholder="e.g. 50, 85, or 1000" style={{ width: '100%' }} />
+                  <label style={labelStyle}>Threshold Value (Optional)</label>
+                  <input className="input" type="number" style={inputStyle} value={newRule.threshold_value} onChange={e => setNewRule({...newRule, threshold_value: e.target.value})} placeholder="e.g. 50, 85, or 1000" />
                 </div>
               </div>
 
               {newRule.trigger_type === 'quota_reached' && (
                 <div>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 500, marginBottom: 6 }}>Target Specific Dataset</label>
-                  <select className="input" value={selectedDataset} onChange={e => setSelectedDataset(e.target.value)} style={{ width: '100%' }}>
+                  <label style={labelStyle}>Target Specific Dataset</label>
+                  <select className="input" style={inputStyle} value={selectedDataset} onChange={e => setSelectedDataset(e.target.value)}>
                     <option value="">-- Apply to All Datasets --</option>
                     {datasets.map(ds => (
                       <option key={ds.name} value={ds.name}>{ds.name}</option>
@@ -626,7 +677,7 @@ export default function Notifications() {
               )}
 
               <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 500, marginBottom: 6 }}>Target Delivery Channels</label>
+                <label style={labelStyle}>Target Delivery Channels</label>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 180, overflowY: 'auto', padding: '12px', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', background: 'rgba(255,255,255,0.015)' }}>
                   {channels.length === 0 ? (
                     <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: '12px 0' }}>
@@ -642,8 +693,8 @@ export default function Notifications() {
                               {getChannelIcon(c.ctype)}
                             </div>
                             <div>
-                              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{c.name}</div>
-                              <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'capitalize' }}>{c.ctype}</div>
+                              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', fontFamily: 'var(--font-ui)' }}>{c.name}</div>
+                              <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'capitalize', fontFamily: 'var(--font-ui)' }}>{c.ctype}</div>
                             </div>
                           </div>
                           <label style={{ position: 'relative', display: 'inline-block', width: 36, height: 18, cursor: 'pointer' }}>
@@ -666,7 +717,7 @@ export default function Notifications() {
                             }}>
                               <span style={{
                                 position: 'absolute', height: 12, width: 12,
-                                left: isSelected ? 20 : 3, bottom: 2,
+                                  left: isSelected ? 20 : 3, bottom: 2,
                                 backgroundColor: '#fff', transition: '0.2s', borderRadius: '50%'
                               }} />
                             </span>
