@@ -137,6 +137,23 @@ export default function Notifications() {
     fetchData();
   };
 
+  const testChannel = async (id: number) => {
+    try {
+      const res = await fetch(`/api/v1/notifications/channels/${id}/test`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('zfs_access_token')}` }
+      });
+      if (res.ok) {
+        alert("Test notification successfully sent!");
+      } else {
+        const txt = await res.text();
+        alert("Test failed: " + txt);
+      }
+    } catch(e) {
+      alert("Network error sending test.");
+    }
+  };
+
   const createRule = async () => {
     try {
       const threshold = newRule.threshold_value ? parseFloat(newRule.threshold_value) : null;
@@ -248,9 +265,14 @@ export default function Notifications() {
                       <div style={{ fontSize: 12, color: 'var(--text-muted)', textTransform: 'capitalize' }}>Type: {c.ctype}</div>
                     </div>
                   </div>
-                  <button className="btn btn-secondary" style={{ padding: '6px 10px' }} onClick={() => deleteChannel(c.id)}>
-                    <Trash2 size={14} style={{ color: 'var(--danger)' }} />
-                  </button>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn btn-secondary" style={{ padding: '6px 10px', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }} onClick={() => testChannel(c.id)}>
+                      <Send size={13} style={{ color: 'var(--accent)' }} /> Test
+                    </button>
+                    <button className="btn btn-secondary" style={{ padding: '6px 10px' }} onClick={() => deleteChannel(c.id)}>
+                      <Trash2 size={14} style={{ color: 'var(--danger)' }} />
+                    </button>
+                  </div>
                 </div>
               ))
             )}

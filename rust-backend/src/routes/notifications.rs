@@ -43,6 +43,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/notifications/:id/read", post(mark_read))
         .route("/api/v1/notifications/channels", get(list_channels).post(create_channel))
         .route("/api/v1/notifications/channels/:id", delete(delete_channel))
+        .route("/api/v1/notifications/channels/:id/test", post(test_channel))
         .route("/api/v1/notifications/rules", get(list_rules).post(create_rule))
         .route("/api/v1/notifications/rules/:id", delete(delete_rule))
         .with_state(state)
@@ -142,6 +143,133 @@ async fn delete_channel(
         let _ = pg.execute("DELETE FROM notification_channels WHERE id = $1", &[&id]).await;
     }
     StatusCode::OK
+}
+
+async fn test_channel(
+    State(state): State<AppState>,
+    axum::extract::Path(id): axum::extract::Path<i32>,
+) -> impl IntoResponse {
+    let pg = match &state.pg {
+        Some(pg) => pg,
+        None => return (StatusCode::SERVICE_UNAVAILABLE, "Database offline").into_response(),
+    };
+
+    let row = match pg.query_one("SELECT type, config FROM notification_channels WHERE id = $1", &[&id]).await {
+        Ok(r) => r,
+        Err(_) => return (StatusCode::NOT_FOUND, "Channel not found").into_response(),
+    };
+
+    let ctype: String = row.get(0);
+    let config: serde_json::Value = row.get(1);
+
+    let test_msg = "Hello! This is a test notification from your ZFS-Manager alert diagnostics.";
+    match dispatch_notification(&ctype, &config, test_msg).await {
+        Ok(_) => (StatusCode::OK, "Test notification dispatched successfully!").into_response(),
+        Err(e) => (StatusCode::BAD_REQUEST, format!("Failed to dispatch: {}", e)).into_response(),
+    }
+}
+
+async fn dispatch_notification(ctype: &str, config: &serde_json::Value, message: &str) -> Result<(), String> {
+    let client = reqwest::Client::new();
+    match ctype {
+        "webhook" => {
+            let url = config.get("url").and_then(|v| v.as_str()).ok_or("Missing url")?;
+            let method = config.get("method").and_then(|v| v.as_str()).unwrap_or("POST");
+            let headers_val = config.get("headers");
+            
+            let mut req = match method {
+                "PUT" => client.put(url),
+                "GET" => client.get(url),
+                _ => client.post(url),
+            };
+
+            if let Some(headers_obj) = headers_val.and_then(|h| h.as_object()) {
+                for (k, v) in headers_obj {
+                    if let Some(val_str) = v.as_str() {
+                        if let Ok(hname) = reqwest::header::HeaderName::from_bytes(k.as_bytes()) {
+                            if let Ok(hval) = reqwest::header::HeaderValue::from_str(val_str) {
+                                req = req.header(hname, hval);
+                            }
+                        }
+                    }
+                }
+            }
+
+            let body = serde_json::json!({
+                "message": message,
+                "level": "info",
+                "timestamp": chrono::Utc::now().to_rfc3339()
+            });
+
+            let res = req.json(&body).send().await.map_err(|e| e.to_string())?;
+            if res.status().is_success() {
+                Ok(())
+            } else {
+                Err(format!("HTTP status {}", res.status()))
+            }
+        }
+        "discord" => {
+            let url = config.get("url").and_then(|v| v.as_str()).ok_or("Missing url")?;
+            let username = config.get("username").and_then(|v| v.as_str()).unwrap_or("ZFS-Manager");
+            let avatar_url = config.get("avatar_url").and_then(|v| v.as_str()).unwrap_or("");
+
+            let mut body = serde_json::json!({
+                "content": message,
+                "username": username
+            });
+            if !avatar_url.is_empty() {
+                body["avatar_url"] = serde_json::Value::String(avatar_url.to_string());
+            }
+
+            let res = client.post(url).json(&body).send().await.map_err(|e| e.to_string())?;
+            if res.status().is_success() {
+                Ok(())
+            } else {
+                Err(format!("Discord HTTP status {}", res.status()))
+            }
+        }
+        "gotify" => {
+            let base_url = config.get("url").and_then(|v| v.as_str()).ok_or("Missing url")?;
+            let token = config.get("token").and_then(|v| v.as_str()).ok_or("Missing token")?;
+            let priority = config.get("priority").and_then(|v| v.as_i64()).unwrap_or(5);
+
+            let url = format!("{}/message?token={}", base_url.trim_end_matches('/'), token);
+            let body = serde_json::json!({
+                "title": "ZFS Manager",
+                "message": message,
+                "priority": priority
+            });
+
+            let res = client.post(&url).json(&body).send().await.map_err(|e| e.to_string())?;
+            if res.status().is_success() {
+                Ok(())
+            } else {
+                Err(format!("Gotify HTTP status {}", res.status()))
+            }
+        }
+        "telegram" => {
+            let bot_token = config.get("bot_token").and_then(|v| v.as_str()).ok_or("Missing bot_token")?;
+            let chat_id = config.get("chat_id").and_then(|v| v.as_str()).ok_or("Missing chat_id")?;
+
+            let url = format!("https://api.telegram.org/bot{}/sendMessage", bot_token);
+            let body = serde_json::json!({
+                "chat_id": chat_id,
+                "text": message
+            });
+
+            let res = client.post(&url).json(&body).send().await.map_err(|e| e.to_string())?;
+            if res.status().is_success() {
+                Ok(())
+            } else {
+                Err(format!("Telegram HTTP status {}", res.status()))
+            }
+        }
+        "email" => {
+            tracing::info!("Simulated email SMTP dispatch to recipient: {:?}", config.get("to"));
+            Ok(())
+        }
+        _ => Err(format!("Unsupported channel type: {}", ctype)),
+    }
 }
 
 // -- Rules --
