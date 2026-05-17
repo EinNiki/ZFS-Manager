@@ -1,10 +1,10 @@
 use std::sync::atomic::Ordering;
 use redis::AsyncCommands;
 use tokio::time::{interval, Duration};
-use tracing::{info, warn, error};
+use tracing::{info, warn};
 
 async fn check_and_trigger_notifications(state: &crate::state::AppState) {
-    let pg = match &state.pg {
+    let _pg = match &state.pg {
         Some(pg) => pg,
         None => return,
     };

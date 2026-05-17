@@ -7,7 +7,6 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use crate::state::AppState;
-use tokio_postgres::Row;
 
 #[derive(Serialize)]
 pub struct Notification {
@@ -54,7 +53,7 @@ pub fn router(state: AppState) -> Router {
 async fn list_notifications(State(state): State<AppState>) -> impl IntoResponse {
     let pg = match &state.pg {
         Some(pg) => pg,
-        None => return (StatusCode::SERVICE_UNAVAILABLE, Json(vec![])).into_response(),
+        None => return (StatusCode::SERVICE_UNAVAILABLE, Json(Vec::<Notification>::new())).into_response(),
     };
 
     let rows = pg.query("SELECT id, type, message, level, is_read, created_at::text FROM notifications ORDER BY created_at DESC LIMIT 100", &[]).await;
@@ -96,7 +95,7 @@ async fn mark_read(
 async fn list_channels(State(state): State<AppState>) -> impl IntoResponse {
     let pg = match &state.pg {
         Some(pg) => pg,
-        None => return (StatusCode::SERVICE_UNAVAILABLE, Json(vec![])).into_response(),
+        None => return (StatusCode::SERVICE_UNAVAILABLE, Json(Vec::<NotificationChannel>::new())).into_response(),
     };
 
     let rows = pg.query("SELECT id, name, type, config FROM notification_channels ORDER BY name ASC", &[]).await;
@@ -150,7 +149,7 @@ async fn delete_channel(
 async fn list_rules(State(state): State<AppState>) -> impl IntoResponse {
     let pg = match &state.pg {
         Some(pg) => pg,
-        None => return (StatusCode::SERVICE_UNAVAILABLE, Json(vec![])).into_response(),
+        None => return (StatusCode::SERVICE_UNAVAILABLE, Json(Vec::<NotificationRule>::new())).into_response(),
     };
 
     let rows = pg.query("SELECT id, name, trigger_type, threshold_value, channel_ids, is_active FROM notification_rules ORDER BY name ASC", &[]).await;
