@@ -211,13 +211,19 @@ export function NotificationCenter({
 
   const grouped = groupNotifications(notifications);
 
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+
   return (
     <div style={{
-      position: 'absolute', top: 44, right: 0, width: 340,
+      position: isMobile ? 'fixed' : 'absolute',
+      top: isMobile ? 52 : 44,
+      right: isMobile ? 0 : 0,
+      left: isMobile ? 0 : 'auto',
+      width: isMobile ? '100vw' : 340,
       background: 'var(--bg-elevated)', border: '1px solid var(--border)',
-      borderRadius: 'var(--radius-lg)', zIndex: 500,
+      borderRadius: isMobile ? 0 : 'var(--radius-lg)', zIndex: 500,
       boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
-      display: 'flex', flexDirection: 'column', maxHeight: 480,
+      display: 'flex', flexDirection: 'column', maxHeight: isMobile ? 'calc(100vh - 52px)' : 480,
     }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>

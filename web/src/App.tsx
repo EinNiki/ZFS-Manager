@@ -149,47 +149,47 @@ function TopBar({
         {title}
       </span>
 
-      {!onMenuOpen && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <div style={{ position: 'relative' }} ref={dropdownRef}>
-            <button
-              onClick={() => setDropdownOpen(!dropdownOpen)}
-              style={{
-                background: 'transparent', border: 'none', cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                width: 32, height: 32, borderRadius: '50%', color: 'var(--text-muted)',
-                position: 'relative',
-              }}
-            >
-              <Bell
-                size={18}
-                style={{ color: getBellColor(), transition: 'color 0.25s ease' }}
-              />
-              {totalUnread > 0 && (
-                <span style={{
-                  position: 'absolute', top: 2, right: 2, background: 'var(--danger)',
-                  color: '#fff', fontSize: 9, fontWeight: 700, borderRadius: '50%',
-                  width: 14, height: 14, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontFamily: 'var(--font-mono)',
-                }}>{totalUnread > 99 ? '99+' : totalUnread}</span>
-              )}
-            </button>
-            {dropdownOpen && (
-              <NotificationCenter
-                onClose={() => setDropdownOpen(false)}
-                systemNotifications={sysNotifications}
-                onMarkSystemRead={(id) => { onMarkRead(id); }}
-              />
+      <div style={{ display: 'flex', alignItems: 'center', gap: onMenuOpen ? 4 : 16 }}>
+        <div style={{ position: 'relative' }} ref={dropdownRef}>
+          <button
+            onClick={() => setDropdownOpen(!dropdownOpen)}
+            style={{
+              background: 'transparent', border: 'none', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 32, height: 32, borderRadius: '50%', color: 'var(--text-muted)',
+              position: 'relative',
+            }}
+          >
+            <Bell
+              size={18}
+              style={{ color: getBellColor(), transition: 'color 0.25s ease' }}
+            />
+            {totalUnread > 0 && (
+              <span style={{
+                position: 'absolute', top: 2, right: 2, background: 'var(--danger)',
+                color: '#fff', fontSize: 9, fontWeight: 700, borderRadius: '50%',
+                width: 14, height: 14, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontFamily: 'var(--font-mono)',
+              }}>{totalUnread > 99 ? '99+' : totalUnread}</span>
             )}
-          </div>
+          </button>
+          {dropdownOpen && (
+            <NotificationCenter
+              onClose={() => setDropdownOpen(false)}
+              systemNotifications={sysNotifications}
+              onMarkSystemRead={(id) => { onMarkRead(id); }}
+            />
+          )}
+        </div>
+        {!onMenuOpen && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span className={loading ? 'dot dot-warning' : 'dot dot-success'} />
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-muted)' }}>
               {loading ? 'Syncing' : 'Live'}
             </span>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </header>
   );
 }
