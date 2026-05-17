@@ -350,6 +350,7 @@ export default function DatasetList({ datasets, volumes = [], pools, onRefresh }
   const [toast,         setToast]         = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [rewriteState,  setRewriteState]  = useState<Record<string, boolean>>({});
+  const [confirmState, setConfirmState] = useState<{ title: string; message: string; onConfirm: () => void } | null>(null);
 
   useEffect(() => {
     setExpandedNodes(new Set(datasets.map(d => d.name)));
@@ -449,15 +450,20 @@ export default function DatasetList({ datasets, volumes = [], pools, onRefresh }
   };
 
   const handleRewrite = async (name: string) => {
-    if (!window.confirm(`Start ZFS rewrite on "${name}"? This operation cannot be cancelled and may take a long time.`)) return;
-    setRewriteState(s => ({ ...s, [name]: true }));
-    try {
-      await api.rewriteDataset(name);
-      showToast(`Rewrite started on "${name}"`, 'success');
-    } catch (err: any) {
-      showToast(err.message || 'Rewrite failed', 'error');
-      setRewriteState(s => ({ ...s, [name]: false }));
-    }
+    setConfirmState({
+      title: "Start Dataset Rewrite",
+      message: `Are you sure you want to start a ZFS rewrite on dataset "${name}"? This operation sequentially rewrites all blocks to clear fragmentation or defragment the dataset. It cannot be cancelled once started and may severely degrade I/O performance until completion.`,
+      onConfirm: async () => {
+        setRewriteState(s => ({ ...s, [name]: true }));
+        try {
+          await api.rewriteDataset(name);
+          showToast(`Rewrite started on "${name}"`, 'success');
+        } catch (err: any) {
+          showToast(err.message || 'Rewrite failed', 'error');
+          setRewriteState(s => ({ ...s, [name]: false }));
+        }
+      }
+    });
   };
 
   const poolMap = useMemo(() => {
@@ -817,6 +823,25 @@ export default function DatasetList({ datasets, volumes = [], pools, onRefresh }
                 </div>
               </motion.div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Fancy Confirmation Modal */}
+      {confirmState && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, backdropFilter: 'blur(4px)', animation: 'fadeIn 0.2s ease-out' }}>
+          <div style={{ background: 'var(--bg-surface)', padding: 24, borderRadius: 'var(--radius-lg)', border: '1px solid var(--border)', maxWidth: 400, width: '100%', boxShadow: '0 20px 50px rgba(0,0,0,0.6)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+              <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--danger)' }}>
+                <AlertTriangle size={20} />
+              </div>
+              <h4 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>{confirmState.title}</h4>
+            </div>
+            <p style={{ color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.5, margin: '0 0 20px 0' }}>{confirmState.message}</p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+              <button className="btn btn-secondary" onClick={() => setConfirmState(null)} style={{ padding: '8px 16px', fontSize: 13 }}>Cancel</button>
+              <button className="btn btn-primary" onClick={() => { confirmState.onConfirm(); setConfirmState(null); }} style={{ padding: '8px 16px', fontSize: 13, background: 'var(--danger)', borderColor: 'var(--danger)' }}>Confirm</button>
+            </div>
           </div>
         </div>
       )}

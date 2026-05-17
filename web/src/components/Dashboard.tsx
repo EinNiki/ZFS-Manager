@@ -233,6 +233,7 @@ function PoolCard({ pool, daysUntilFull }: { pool: ZFSPool; daysUntilFull: numbe
   const [snapError,   setSnapError]   = useState('');
   const [snapWorking, setSnapWorking] = useState(false);
   const [cardToast,   setCardToast]   = useState('');
+  const [confirmState, setConfirmState] = useState<{ title: string; message: string; onConfirm: () => void } | null>(null);
   const pollRef   = useRef<ReturnType<typeof setInterval> | null>(null);
   const popRef    = useRef<HTMLDivElement>(null);
 
@@ -277,15 +278,20 @@ function PoolCard({ pool, daysUntilFull }: { pool: ZFSPool; daysUntilFull: numbe
 
   const handleScrub = async () => {
     if (scrubState === 'running') return;
-    if (!window.confirm(`Start ZFS scrub on pool "${pool.name}"? This may impact performance.`)) return;
-    setScrubState('running');
-    try {
-      await api.startScrub(pool.name);
-      startPoll();
-    } catch {
-      setScrubState('error');
-      setTimeout(() => setScrubState('idle'), 3000);
-    }
+    setConfirmState({
+      title: "Start ZFS Scrub",
+      message: `Are you sure you want to start a ZFS scrub on the pool "${pool.name}"? Scrubbing validates the integrity of all data blocks on disks. It can temporarily degrade I/O performance.`,
+      onConfirm: async () => {
+        setScrubState('running');
+        try {
+          await api.startScrub(pool.name);
+          startPoll();
+        } catch {
+          setScrubState('error');
+          setTimeout(() => setScrubState('idle'), 3000);
+        }
+      }
+    });
   };
 
   const openSnapshot = () => {
@@ -461,6 +467,25 @@ function PoolCard({ pool, daysUntilFull }: { pool: ZFSPool; daysUntilFull: numbe
           )}
         </div>
       </div>
+
+      {/* Fancy Confirmation Modal */}
+      {confirmState && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, backdropFilter: 'blur(4px)', animation: 'fadeIn 0.2s ease-out' }}>
+          <div style={{ background: 'var(--bg-surface)', padding: 24, borderRadius: 'var(--radius-lg)', border: '1px solid var(--border)', maxWidth: 400, width: '100%', boxShadow: '0 20px 50px rgba(0,0,0,0.6)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+              <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--danger)' }}>
+                <AlertTriangle size={20} />
+              </div>
+              <h4 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>{confirmState.title}</h4>
+            </div>
+            <p style={{ color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.5, margin: '0 0 20px 0' }}>{confirmState.message}</p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+              <button className="btn btn-secondary" onClick={() => setConfirmState(null)} style={{ padding: '8px 16px', fontSize: 13 }}>Cancel</button>
+              <button className="btn btn-primary" onClick={() => { confirmState.onConfirm(); setConfirmState(null); }} style={{ padding: '8px 16px', fontSize: 13, background: 'var(--danger)', borderColor: 'var(--danger)' }}>Confirm</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

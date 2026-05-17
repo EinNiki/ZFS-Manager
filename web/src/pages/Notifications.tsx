@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api';
-import { Bell, Trash2, Plus, Mail, MessageSquare, Globe, Send, BellOff } from 'lucide-react';
+import { Bell, Trash2, Plus, Mail, MessageSquare, Globe, Send, BellOff, AlertTriangle } from 'lucide-react';
 
 export default function Notifications() {
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -50,6 +50,9 @@ export default function Notifications() {
   });
   const [datasets, setDatasets] = useState<any[]>([]);
   const [selectedDataset, setSelectedDataset] = useState<string>('');
+
+  const [confirmState, setConfirmState] = useState<{ title: string; message: string; onConfirm: () => void } | null>(null);
+  const [alertState, setAlertState] = useState<{ title: string; message: string; type: 'success' | 'error' } | null>(null);
 
   const displayTriggerType = (trigger: string) => {
     if (trigger.startsWith('quota_reached:')) {
@@ -102,7 +105,7 @@ export default function Notifications() {
       try {
         headers = JSON.parse(newChannel.webhook_headers);
       } catch(e) {
-        alert("Headers field must be valid JSON.");
+        setAlertState({ title: "Configuration Error", message: "Headers field must be valid JSON.", type: "error" });
         return;
       }
       configObj = {
@@ -153,14 +156,19 @@ export default function Notifications() {
       setNewChannel(initialChannelState);
       fetchData();
     } catch (e) {
-      alert("Network error creating channel.");
+      setAlertState({ title: "Network Error", message: "Network error creating channel.", type: "error" });
     }
   };
 
   const deleteChannel = async (id: number) => {
-    if (!confirm("Delete this channel?")) return;
-    await fetch(`/api/v1/notifications/channels/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${localStorage.getItem('zfs_access_token')}` } });
-    fetchData();
+    setConfirmState({
+      title: "Delete Notification Channel",
+      message: "Are you sure you want to permanently delete this notification channel? Active rules relying on it might fail to deliver.",
+      onConfirm: async () => {
+        await fetch(`/api/v1/notifications/channels/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${localStorage.getItem('zfs_access_token')}` } });
+        fetchData();
+      }
+    });
   };
 
   const testChannel = async (id: number) => {
@@ -170,13 +178,13 @@ export default function Notifications() {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('zfs_access_token')}` }
       });
       if (res.ok) {
-        alert("Test notification successfully sent!");
+        setAlertState({ title: "Test Sent", message: "Test notification successfully sent to the channel!", type: "success" });
       } else {
         const txt = await res.text();
-        alert("Test failed: " + txt);
+        setAlertState({ title: "Test Failed", message: `Test failed: ${txt}`, type: "error" });
       }
     } catch(e) {
-      alert("Network error sending test.");
+      setAlertState({ title: "Network Error", message: "Network error sending test notification.", type: "error" });
     }
   };
 
@@ -197,14 +205,19 @@ export default function Notifications() {
       setSelectedDataset('');
       fetchData();
     } catch (e) {
-      alert("Failed to create rule.");
+      setAlertState({ title: "Save Failed", message: "Failed to save diagnostic rule.", type: "error" });
     }
   };
 
   const deleteRule = async (id: number) => {
-    if (!confirm("Delete this rule?")) return;
-    await fetch(`/api/v1/notifications/rules/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${localStorage.getItem('zfs_access_token')}` } });
-    fetchData();
+    setConfirmState({
+      title: "Delete Rule",
+      message: "Are you sure you want to permanently delete this diagnostic rule?",
+      onConfirm: async () => {
+        await fetch(`/api/v1/notifications/rules/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${localStorage.getItem('zfs_access_token')}` } });
+        fetchData();
+      }
+    });
   };
 
   const getChannelIcon = (type: string) => {
@@ -601,6 +614,49 @@ export default function Notifications() {
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 28, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
               <button className="btn btn-secondary" onClick={() => setShowRuleModal(false)}>Cancel</button>
               <button className="btn btn-primary" onClick={createRule}>Save Rule</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Fancy Confirmation Modal */}
+      {confirmState && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, backdropFilter: 'blur(4px)', animation: 'fadeIn 0.2s ease-out' }}>
+          <div style={{ background: 'var(--bg-surface)', padding: 24, borderRadius: 'var(--radius-lg)', border: '1px solid var(--border)', maxWidth: 400, width: '100%', boxShadow: '0 20px 50px rgba(0,0,0,0.6)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+              <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--danger)' }}>
+                <AlertTriangle size={20} />
+              </div>
+              <h4 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>{confirmState.title || 'Confirm Action'}</h4>
+            </div>
+            <p style={{ color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.5, margin: '0 0 20px 0' }}>{confirmState.message}</p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+              <button className="btn btn-secondary" onClick={() => setConfirmState(null)} style={{ padding: '8px 16px', fontSize: 13 }}>Cancel</button>
+              <button className="btn btn-primary" onClick={() => { confirmState.onConfirm(); setConfirmState(null); }} style={{ padding: '8px 16px', fontSize: 13, background: 'var(--danger)', borderColor: 'var(--danger)' }}>Confirm</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Fancy Alert Modal */}
+      {alertState && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200, backdropFilter: 'blur(4px)', animation: 'fadeIn 0.2s ease-out' }}>
+          <div style={{ background: 'var(--bg-surface)', padding: 24, borderRadius: 'var(--radius-lg)', border: '1px solid var(--border)', maxWidth: 400, width: '100%', boxShadow: '0 20px 50px rgba(0,0,0,0.6)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+              <div style={{
+                width: 40, height: 40, borderRadius: '50%',
+                background: alertState.type === 'success' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                border: alertState.type === 'success' ? '1px solid rgba(34, 197, 94, 0.2)' : '1px solid rgba(239, 68, 68, 0.2)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: alertState.type === 'success' ? '#22c55e' : 'var(--danger)'
+              }}>
+                {alertState.type === 'success' ? <Bell size={20} /> : <AlertTriangle size={20} />}
+              </div>
+              <h4 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>{alertState.title}</h4>
+            </div>
+            <p style={{ color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.5, margin: '0 0 20px 0' }}>{alertState.message}</p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button className="btn btn-primary" onClick={() => setAlertState(null)} style={{ padding: '8px 24px', fontSize: 13 }}>OK</button>
             </div>
           </div>
         </div>
