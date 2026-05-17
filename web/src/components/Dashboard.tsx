@@ -871,18 +871,6 @@ export default function Dashboard({
                 ))}
               </div>
               
-              {/* Total Read / Write & Fill Prediction */}
-              <div style={{ display: 'flex', borderTop: '1px solid var(--border)', background: 'var(--bg-elevated)', padding: '12px 18px', gap: 24, fontSize: 11, fontFamily: 'var(--font-mono)' }}>
-                <div style={{ display: 'flex', gap: 16, color: 'var(--text-secondary)' }}>
-                  <span><span style={{ color: '#38bdf8' }}>↑ Gesamt gelesen:</span> {liveMetrics?.total_read_mb ? formatBytes(liveMetrics.total_read_mb * 1024 * 1024, 2) : '0 B'}</span>
-                  <span><span style={{ color: '#818cf8' }}>↓ Gesamt geschrieben:</span> {liveMetrics?.total_write_mb ? formatBytes(liveMetrics.total_write_mb * 1024 * 1024, 2) : '0 B'}</span>
-                </div>
-                {fillPrediction && fillPrediction.timeText && (
-                  <div style={{ marginLeft: 'auto', color: fillPrediction.color, fontWeight: 500 }}>
-                    Prognose: {fillPrediction.text} ({fillPrediction.timeText})
-                  </div>
-                )}
-              </div>
             </Panel>
 
 
