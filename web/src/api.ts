@@ -198,6 +198,8 @@ export const api = {
   getServerTime: () =>
     request<{ now: string; timezone: string }>('/time'),
 
+  getHealth: () => request<any>('/health'),
+
   // ── Pool Settings ──────────────────────────────────────────────────────────
   getPoolSettings: (name: string) =>
     request<{

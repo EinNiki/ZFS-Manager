@@ -229,6 +229,7 @@ export default function App() {
   const [liveMetrics, setLiveMetrics] = useState<any>(null);
   const [serverTimeOffsetMs, setServerTimeOffsetMs] = useState(0);
   const [systemStats, setSystemStats] = useState<any>(null);
+  const [healthData, setHealthData] = useState<any>(null);
   const [logs, setLogs]             = useState<ZFSLog[]>([]);
   const [sysNotifications, setSysNotifications] = useState<any[]>([]);
   const [showNotifPopup, setShowNotifPopup] = useState(false);
@@ -303,12 +304,13 @@ export default function App() {
   const fetchData = useCallback(async () => {
     if (!isAuthenticated) return;
     try {
-      const [poolsRes, snapshotRes, statsRes, datasetsRes, volumesRes] = await Promise.all([
+      const [poolsRes, snapshotRes, statsRes, datasetsRes, volumesRes, healthRes] = await Promise.all([
         api.getPools(),
         api.getSnapshots(),
         api.getSystemStats().catch(() => null),
         api.getDatasets(),
         api.getVolumes(),
+        api.getHealth().catch(() => null),
       ]);
 
       // fetch notifications without throwing
@@ -322,6 +324,7 @@ export default function App() {
         }).catch(() => {});
 
       if (statsRes) setSystemStats(statsRes);
+      if (healthRes) setHealthData(healthRes);
 
       const mappedPools: ZFSPool[] = (poolsRes.pools || []).map((p: any) => ({
         name: p.name,
@@ -468,6 +471,7 @@ export default function App() {
         }}>
           <Sidebar
             systemStats={systemStats}
+            healthData={healthData}
             mobileOpen={mobileSidebarOpen}
             onClose={() => setMobileSidebarOpen(false)}
             collapsed={sidebarCollapsed}
