@@ -828,6 +828,17 @@ export default function Dashboard({
                       </div>
                     );
                   })()}
+                  {/* Disk full forecast below chart */}
+                  <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Forecast:</span>
+                    {fillPrediction && fillPrediction.text !== '–' && fillPrediction.timeText ? (
+                      <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: fillPrediction.color, fontWeight: 600 }}>
+                        Full on {fillPrediction.text.replace('Full on ', '')} ({fillPrediction.timeText})
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>No growth detected</span>
+                    )}
+                  </div>
                 </>
               ) : (
                 <div style={{ height: 80, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
