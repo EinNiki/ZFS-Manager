@@ -202,11 +202,6 @@ function TopBar({
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-muted)' }}>
               {loading ? 'Syncing' : 'Live'}
             </span>
-            {systemStats?.zfs_version && (
-              <span className="badge">
-                {systemStats.zfs_version.replace('zfs-', '')}
-              </span>
-            )}
           </div>
         </div>
       )}
