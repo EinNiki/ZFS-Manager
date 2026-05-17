@@ -767,10 +767,10 @@ export default function Dashboard({
                         <YAxis axisLine={false} tickLine={false} tick={AXIS_TICK}
                           tickFormatter={v => {
                             const maxV = ioData.reduce((m: number, d: any) => Math.max(m, d.read || 0, d.write || 0), 0);
-                            return maxV >= 1000 ? `${(v/1000).toFixed(1)} GB/s` : `${v.toFixed(0)} MB/s`;
+                            return maxV >= 1000 ? `${(v/1000).toFixed(1)}\u00A0GB/s` : `${v.toFixed(0)}\u00A0MB/s`;
                           }}
                           tickCount={MAX_TICKS}
-                          width={70}
+                          width={85}
                         />
                         <Tooltip {...TOOLTIP_STYLE} formatter={(v: number, n: string) => [
                           v >= 1000 ? `${(v/1000).toFixed(2)} GB/s` : `${v.toFixed(2)} MB/s`,

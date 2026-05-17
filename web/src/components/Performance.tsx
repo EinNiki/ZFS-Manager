@@ -76,14 +76,14 @@ const AXIS_TICK  = { fill: '#52525b', fontSize: 10 };
 const GRID_PROPS = { strokeDasharray: '1 6' as const, stroke: 'rgba(255,255,255,0.04)', vertical: false };
 
 function getBwScale(maxMB: number): { unit: string; fmt: (v: number) => string } {
-  if (maxMB >= 1000) return { unit: 'GB/s', fmt: v => `${(v / 1000).toFixed(1)} GB/s` };
-  if (maxMB >= 1)    return { unit: 'MB/s', fmt: v => `${v.toFixed(0)} MB/s` };
-  return { unit: 'KB/s', fmt: v => `${(v * 1024).toFixed(0)} KB/s` };
+  if (maxMB >= 1000) return { unit: 'GB/s', fmt: v => `${(v / 1000).toFixed(1)}\u00A0GB/s` };
+  if (maxMB >= 1)    return { unit: 'MB/s', fmt: v => `${v.toFixed(0)}\u00A0MB/s` };
+  return { unit: 'KB/s', fmt: v => `${(v * 1024).toFixed(0)}\u00A0KB/s` };
 }
 
 function getGbScale(maxGB: number): { unit: string; fmt: (v: number) => string } {
-  if (maxGB >= 1000) return { unit: 'TB', fmt: v => `${(v / 1000).toFixed(1)} TB` };
-  return { unit: 'GB', fmt: v => `${v.toFixed(0)} GB` };
+  if (maxGB >= 1000) return { unit: 'TB', fmt: v => `${(v / 1000).toFixed(1)}\u00A0TB` };
+  return { unit: 'GB', fmt: v => `${v.toFixed(0)}\u00A0GB` };
 }
 
 function fmtBw(v: number) {
@@ -584,7 +584,7 @@ export default function Performance({ stats, liveMetrics, serverTimeOffsetMs = 0
                       </defs>
                       <CartesianGrid {...GRID_PROPS} />
                       <XAxis {...(liveMode ? liveXAxisProps : histXAxisProps)} />
-                      <YAxis axisLine={false} tickLine={false} tick={AXIS_TICK} tickFormatter={bwScale.fmt} width={60} />
+                      <YAxis axisLine={false} tickLine={false} tick={AXIS_TICK} tickFormatter={bwScale.fmt} width={85} />
                       <Tooltip {...TOOLTIP_STYLE} labelFormatter={(v, pts) => pts?.[0]?.payload?.hhmmss ?? v} formatter={(v: number) => [fmtBw(v), '']} />
                       {vis('read') && <Area type="monotone" dataKey="read" stroke={C.read} fill="url(#gRead)" strokeWidth={2} isAnimationActive={!liveMode} animationDuration={600} />}
                       {vis('write') && <Area type="monotone" dataKey="write" stroke={C.write} fill="url(#gWrite)" strokeWidth={2} isAnimationActive={!liveMode} animationDuration={600} />}
@@ -628,7 +628,7 @@ export default function Performance({ stats, liveMetrics, serverTimeOffsetMs = 0
                   <AreaChart data={chartData} margin={CHART_MARGIN}>
                     <CartesianGrid {...GRID_PROPS} />
                     <XAxis {...histXAxisProps} />
-                    <YAxis axisLine={false} tickLine={false} tick={AXIS_TICK} tickFormatter={gbScale.fmt} width={60} />
+                    <YAxis axisLine={false} tickLine={false} tick={AXIS_TICK} tickFormatter={gbScale.fmt} width={85} />
                     <Tooltip {...TOOLTIP_STYLE} formatter={(v: number) => [fmtGB(v), '']} />
                     {vis('alloc') && <Area type="stepAfter" dataKey="alloc" stroke={C.alloc} fill={C.alloc + '10'} strokeWidth={2} />}
                     {vis('free')  && <Area type="stepAfter" dataKey="free"  stroke={C.free}  fill={C.free  + '10'} strokeWidth={2} />}
