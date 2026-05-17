@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api';
-import { Bell, Trash2, Plus, Mail, MessageSquare, Globe, Send, BellOff, AlertTriangle } from 'lucide-react';
+import { Bell, Trash2, Plus, Mail, MessageSquare, Globe, Send, BellOff, AlertTriangle, Edit2 } from 'lucide-react';
 
 export default function Notifications() {
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -53,6 +53,9 @@ export default function Notifications() {
 
   const [confirmState, setConfirmState] = useState<{ title: string; message: string; onConfirm: () => void } | null>(null);
   const [alertState, setAlertState] = useState<{ title: string; message: string; type: 'success' | 'error' } | null>(null);
+
+  const [editingChannelId, setEditingChannelId] = useState<number | null>(null);
+  const [editingRuleId, setEditingRuleId] = useState<number | null>(null);
 
   const displayTriggerType = (trigger: string) => {
     if (trigger.startsWith('quota_reached:')) {
@@ -147,17 +150,47 @@ export default function Notifications() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('zfs_access_token')}` },
         body: JSON.stringify({
+          id: editingChannelId || undefined,
           name: newChannel.name,
           ctype: newChannel.ctype,
           config: configObj,
         })
       });
       setShowChannelModal(false);
+      setEditingChannelId(null);
       setNewChannel(initialChannelState);
       fetchData();
     } catch (e) {
-      setAlertState({ title: "Network Error", message: "Network error creating channel.", type: "error" });
+      setAlertState({ title: "Network Error", message: "Network error saving channel.", type: "error" });
     }
+  };
+
+  const startEditChannel = (channel: any) => {
+    setEditingChannelId(channel.id);
+    const c = channel.config || {};
+    setNewChannel({
+      name: channel.name,
+      ctype: channel.ctype,
+      webhook_url: c.url || '',
+      webhook_method: c.method || 'POST',
+      webhook_headers: c.headers ? JSON.stringify(c.headers, null, 2) : '{}',
+      discord_url: c.url || '',
+      discord_username: c.username || '',
+      discord_avatar: c.avatar_url || '',
+      gotify_url: c.url || '',
+      gotify_token: c.token || '',
+      gotify_priority: String(c.priority || 5),
+      telegram_bot_token: c.bot_token || '',
+      telegram_chat_id: c.chat_id || '',
+      email_host: c.host || '',
+      email_port: String(c.port || 587),
+      email_username: c.username || '',
+      email_password: c.password || '',
+      email_encryption: c.encryption || 'TLS',
+      email_from: c.from || '',
+      email_to: c.to || '',
+    });
+    setShowChannelModal(true);
   };
 
   const deleteChannel = async (id: number) => {
@@ -198,15 +231,42 @@ export default function Notifications() {
       await fetch('/api/v1/notifications/rules', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('zfs_access_token')}` },
-        body: JSON.stringify({ ...newRule, trigger_type: finalTriggerType, threshold_value: threshold })
+        body: JSON.stringify({
+          id: editingRuleId || undefined,
+          name: newRule.name,
+          trigger_type: finalTriggerType,
+          threshold_value: threshold,
+          channel_ids: newRule.channel_ids,
+          is_active: newRule.is_active,
+        })
       });
       setShowRuleModal(false);
+      setEditingRuleId(null);
       setNewRule({ name: '', trigger_type: 'login_failed', threshold_value: '', channel_ids: [], is_active: true });
       setSelectedDataset('');
       fetchData();
     } catch (e) {
       setAlertState({ title: "Save Failed", message: "Failed to save diagnostic rule.", type: "error" });
     }
+  };
+
+  const startEditRule = (rule: any) => {
+    setEditingRuleId(rule.id);
+    let baseTrigger = rule.trigger_type;
+    let dataset = '';
+    if (rule.trigger_type.startsWith('quota_reached:')) {
+      baseTrigger = 'quota_reached';
+      dataset = rule.trigger_type.split(':')[1];
+    }
+    setNewRule({
+      name: rule.name,
+      trigger_type: baseTrigger,
+      threshold_value: rule.threshold_value !== null ? String(rule.threshold_value) : '',
+      channel_ids: rule.channel_ids || [],
+      is_active: rule.is_active,
+    });
+    setSelectedDataset(dataset);
+    setShowRuleModal(true);
   };
 
   const deleteRule = async (id: number) => {
@@ -252,7 +312,7 @@ export default function Notifications() {
               <h2 style={{ fontSize: 15, fontWeight: 600, margin: 0 }}>Active Diagnostic Rules</h2>
               <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Trigger notifications on system events</span>
             </div>
-            <button className="btn btn-primary" style={{ padding: '6px 12px', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }} onClick={() => setShowRuleModal(true)}>
+            <button className="btn btn-primary" style={{ padding: '6px 12px', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }} onClick={() => { setEditingRuleId(null); setNewRule({ name: '', trigger_type: 'login_failed', threshold_value: '', channel_ids: [], is_active: true }); setSelectedDataset(''); setShowRuleModal(true); }}>
               <Plus size={15} /> Add Rule
             </button>
           </div>
@@ -271,9 +331,14 @@ export default function Notifications() {
                       Trigger: <strong style={{ color: 'var(--accent)' }}>{displayTriggerType(r.trigger_type)}</strong> {r.threshold_value !== null ? `(${r.threshold_value})` : ''}
                     </div>
                   </div>
-                  <button className="btn btn-secondary" style={{ padding: '6px 10px' }} onClick={() => deleteRule(r.id)}>
-                    <Trash2 size={14} style={{ color: 'var(--danger)' }} />
-                  </button>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn btn-secondary" style={{ padding: '6px 10px' }} onClick={() => startEditRule(r)}>
+                      <Edit2 size={14} style={{ color: 'var(--accent)' }} />
+                    </button>
+                    <button className="btn btn-secondary" style={{ padding: '6px 10px' }} onClick={() => deleteRule(r.id)}>
+                      <Trash2 size={14} style={{ color: 'var(--danger)' }} />
+                    </button>
+                  </div>
                 </div>
               ))
             )}
@@ -287,7 +352,7 @@ export default function Notifications() {
               <h2 style={{ fontSize: 15, fontWeight: 600, margin: 0 }}>Notification Channels</h2>
               <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Delivery end-points for triggers</span>
             </div>
-            <button className="btn btn-primary" style={{ padding: '6px 12px', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }} onClick={() => setShowChannelModal(true)}>
+            <button className="btn btn-primary" style={{ padding: '6px 12px', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }} onClick={() => { setEditingChannelId(null); setNewChannel(initialChannelState); setShowChannelModal(true); }}>
               <Plus size={15} /> Add Channel
             </button>
           </div>
@@ -312,6 +377,9 @@ export default function Notifications() {
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button className="btn btn-secondary" style={{ padding: '6px 10px', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }} onClick={() => testChannel(c.id)}>
                       <Send size={13} style={{ color: 'var(--accent)' }} /> Test
+                    </button>
+                    <button className="btn btn-secondary" style={{ padding: '6px 10px' }} onClick={() => startEditChannel(c)}>
+                      <Edit2 size={14} style={{ color: 'var(--accent)' }} />
                     </button>
                     <button className="btn btn-secondary" style={{ padding: '6px 10px' }} onClick={() => deleteChannel(c.id)}>
                       <Trash2 size={14} style={{ color: 'var(--danger)' }} />
@@ -354,8 +422,8 @@ export default function Notifications() {
       {showChannelModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}>
           <div style={{ background: 'var(--bg-surface)', padding: 28, borderRadius: 'var(--radius-lg)', border: '1px solid var(--border)', maxWidth: 580, width: '100%', boxShadow: '0 12px 40px rgba(0,0,0,0.5)' }}>
-            <h3 style={{ margin: '0 0 8px 0', fontSize: 18, fontWeight: 700 }}>Configure Delivery Channel</h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 20 }}>Create an external notification channel for system messages.</p>
+            <h3 style={{ margin: '0 0 8px 0', fontSize: 18, fontWeight: 700 }}>{editingChannelId ? 'Edit Delivery Channel' : 'Configure Delivery Channel'}</h3>
+            <p style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 20 }}>{editingChannelId ? 'Modify notification endpoint settings.' : 'Create an external notification channel for system messages.'}</p>
             
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
               <div>
@@ -504,8 +572,8 @@ export default function Notifications() {
       {showRuleModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}>
           <div style={{ background: 'var(--bg-surface)', padding: 28, borderRadius: 'var(--radius-lg)', border: '1px solid var(--border)', maxWidth: 580, width: '100%', boxShadow: '0 12px 40px rgba(0,0,0,0.5)' }}>
-            <h3 style={{ margin: '0 0 8px 0', fontSize: 18, fontWeight: 700 }}>Create Diagnostic Rule</h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 20 }}>Define threshold conditions that trigger automated notifications.</p>
+            <h3 style={{ margin: '0 0 8px 0', fontSize: 18, fontWeight: 700 }}>{editingRuleId ? 'Edit Diagnostic Rule' : 'Create Diagnostic Rule'}</h3>
+            <p style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 20 }}>{editingRuleId ? 'Modify configuration options for this alert trigger.' : 'Define threshold conditions that trigger automated notifications.'}</p>
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>
