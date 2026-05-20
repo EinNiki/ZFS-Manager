@@ -1,217 +1,108 @@
-# ZFS Manager
-
-A modern, dark-themed web dashboard for managing ZFS storage pools — built with a Rust/Axum REST backend and a React + Tailwind frontend, deployed via Docker Compose.
-
-![ZFS Manager Dashboard](https://img.shields.io/badge/ZFS-Manager-blue?style=flat-square) ![Rust](https://img.shields.io/badge/Rust-Axum-orange?style=flat-square) ![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square) ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square)
-
----
-
-## Features
-
-### Storage Pools
-- Live pool list with health status, RAID-type badge (Mirror, RAIDZ-1/2/3, Stripe), fragmentation and capacity
-- **X von Y** capacity display with color-coded utilization bar (sky / amber / rose)
-- Disk list per pool with SMART data viewer per disk
-- **Action menu** per pool: Show Status, ZFS Rewrite (scrub), Expand Pool, Replace Disk
-- **Replace Disk** — 2-step flow: select old disk from pool's own disk list, then pick the replacement
-- **Expand Pool** — shows pool's actual disks (not system block devices)
-- **Import Pool** — auto-detects importable pools, supports custom search directory
-- **Create Pool** — VDEV type selector (Stripe / Mirror / RAIDZ-1/2/3), device path picker, ashift, force flag, live command preview
-- Scrub with live progress bar and polling
-
-### Datasets & Volumes
-- Hierarchical dataset list with sort, search, compression and usage display
-- **Create dataset** with inline name input inside the panel header
-- **Delete dataset** — detects children / busy mounts and offers Force + Recursive buttons with clear error messages
-- **Properties editor** — compression, quota (with MB/GB/TB unit selector), atime, dedup, readonly toggles
-- **Rewrite** button per dataset row (triggers pool scrub on parent pool)
-
-### Snapshots
-- Full snapshot list with dataset grouping and formatted timestamps
-- **Auto-name** on dataset select: `Pool-Dataset-YYYY-MM-DD`
-- Create, rollback, delete snapshots
-
-### Performance (real-time charts)
-- **Throughput** — Read/Write in MB/s (correct iostat column mapping)
-- **IOPS** — combined read+write ops/s
-- **System Resources** — real CPU% (two `/proc/stat` readings, 250 ms apart) + ARC hit ratio
-- **Storage Trends** — pool alloc/free history
-- Clickable legend to toggle individual series on/off
-
-### Dashboard
-- Summary cards: pools, datasets, snapshots, volumes
-- Utilization bar with `X GB von Y GB` label
-- Live IOPS / Throughput / ARC hit / CPU metrics (shows `0` instead of `—` when idle)
-- Event feed from pool history
-- System stats: uptime, memory, ARC size
-
-### System Logs
-- Pool history parsed into structured log entries with timestamp, type and command
+<div align="center">
+  <h1>ZFS Manager</h1>
+  <p>A modern, high-performance web dashboard for managing ZFS storage pools.</p>
+  
+  ![Rust](https://img.shields.io/badge/Rust-Axum-orange?style=flat-square) 
+  ![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square) 
+  ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791?style=flat-square)
+  ![Redis](https://img.shields.io/badge/Redis-7-DC382D?style=flat-square)
+  ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square)
+</div>
 
 ---
 
-## Tech Stack
+## 🌟 Overview
 
-| Layer | Technology |
+ZFS Manager is a completely reimagined, dark-themed control panel designed to bring enterprise-grade ZFS administration into a sleek, user-friendly interface. 
+
+Built with a lightning-fast **Rust/Axum** backend and a dynamic **React + Tailwind** frontend, it provides real-time metrics, historical performance data, global notification rules, and complete control over your storage arrays.
+
+---
+
+## ✨ Key Features
+
+### 📊 Advanced Performance Tracking (New)
+- **Time-Series Metrics**: Integrated **PostgreSQL** database securely persists historical performance data (IOPS, Throughput, ARC hit ratio, Capacity).
+- **Sub-second Real-time Monitoring**: High-frequency **Redis** caching pipeline fuels the live dashboard with real-time CPU, RAM, and disk utilization data without blocking ZFS commands.
+- **Dynamic Forecasting**: Smart predictive algorithms estimate when your storage pools will run out of space based on historical consumption trends.
+
+### 🔔 Global Notification System
+- Completely customizable **Notification Rules Engine**.
+- Native support for **Discord, Telegram, and Email** webhooks.
+- Get instant alerts on ZFS scrubs, dataset rewrites, disk replacements, and pool health degradation.
+
+### 💽 Storage Pools & Disks
+- Live pool list with health status, RAID-type badges (Mirror, RAIDZ-1/2/3, Stripe), fragmentation, and capacity.
+- Deep disk inspection with **per-disk SMART data** viewer.
+- **Action Menu**: Trigger ZFS Rewrites (rebalance), Expand Pools, Replace Disks, or run Scrubs with live progress tracking.
+- **Pool Creation**: Intuitive VDEV type selector, ashift configuration, and force flags with a live terminal command preview.
+
+### 📁 Datasets & Volumes
+- Unified **Settings Popout**: Edit compression (lz4, zstd, gzip), quota, atime, dedup, and readonly attributes in a single, beautiful menu.
+- **In-place Dataset Rewrite**: Rebalance datasets after compression changes with one click.
+- Detects busy mounts/children when destroying datasets, offering safe Force + Recursive options.
+
+### 📸 Snapshots
+- Auto-naming schemas (`Pool-Dataset-YYYY-MM-DD`).
+- One-click Snapshot Rollbacks and granular deletions.
+
+---
+
+## 🏗️ Architecture & Tech Stack
+
+| Layer | Technologies |
 |---|---|
-| Backend | Rust · Axum 0.7 · Tokio · serde_json · chrono |
-| Frontend | React 19 · TypeScript · Vite 6 · Tailwind CSS 4 |
-| Charts | Recharts 3 |
-| Animations | Framer Motion |
-| Icons | Lucide React |
-| Container | Docker Compose · Alpine 3.20 (ZFS 2.2.5) |
+| **Backend** | Rust, Axum 0.7, Tokio, Serde, SQLx |
+| **Frontend** | React 19, TypeScript, Vite 6, Tailwind CSS 4, Recharts, Framer Motion |
+| **Datastore** | PostgreSQL 16 (Metrics History), Redis 7 (Live Cache & PubSub) |
+| **Deployment**| Docker Compose, Alpine 3.20 (ZFS 2.2.5 ABI) |
 
 ---
 
-## Requirements
+## 🚀 Quick Start
 
-- Linux host with ZFS kernel module loaded (`zfs-kmod` ≥ 2.0)
-- Docker + Docker Compose
-- The container runtime stage uses **Alpine 3.20** (ZFS 2.2.5) for ABI compatibility with the 2.2.x kernel module. If your host runs ZFS 2.4.x, change `FROM alpine:3.20` to `FROM alpine:latest` in `rust-backend/Dockerfile`.
+Getting started is incredibly easy. The entire stack (Backend, Frontend, PostgreSQL, Redis) is orchestrated via Docker Compose.
 
----
+### Prerequisites
+- A Linux host with the ZFS kernel module loaded (`zfs-kmod` ≥ 2.0).
+- Docker and Docker Compose installed.
 
-## Quick Start
+### Installation
 
 ```bash
-git clone https://github.com/EinNiki/zfs-manager.git
-cd zfs-manager
+# 1. Clone the repository
+git clone https://github.com/ZFS-Manager/ZFS-Manager.git
+cd ZFS-Manager
 
+# 2. Start the entire stack in the background
 docker compose up -d --build
 ```
 
-Open **http://localhost:8080** — default API key is `admin123`.
+Open **http://localhost:8080** in your browser. 
+*(The default API Key is `admin123`)*
 
-### Environment Variables
+---
+
+## ⚙️ Configuration
+
+Environment variables can be adjusted directly in the `compose.yaml` or via a `.env` file.
 
 | Variable | Default | Description |
 |---|---|---|
-| `ZFS_API_KEY` | `admin123` | API key for all backend requests |
-| `ZFS_BACKEND_PORT` | `3000` | Port for the Rust API |
-| `ZFS_WEB_PORT` | `8080` | Port for the nginx frontend |
-
-Override via a `.env` file in the project root or by editing `compose.yaml`.
-
----
-
-## Demo Pool Setup (testing without real disks)
-
-```bash
-# Create two 500 MB image files as virtual disks
-dd if=/dev/zero of=/tmp/zfs_disk1.img bs=1M count=500
-dd if=/dev/zero of=/tmp/zfs_disk2.img bs=1M count=500
-
-# Create a mirrored demo pool
-sudo zpool create -f demo_pool mirror /tmp/zfs_disk1.img /tmp/zfs_disk2.img
-
-# Populate with some datasets
-sudo zfs create demo_pool/data
-sudo zfs create demo_pool/backups
-sudo zfs create demo_pool/data/documents
-```
+| `ZFS_API_KEY` | `admin123` | Security key for all backend REST API requests. |
+| `POSTGRES_PASSWORD` | `zfs_secret` | Password for the integrated PostgreSQL metrics database. |
+| `ZFS_BACKEND_PORT` | `3000` | Port for the Rust API. |
+| `ZFS_WEB_PORT` | `8080` | Port for the Nginx frontend. |
 
 ---
 
-## API Overview
+## ⚠️ Important Notes & Limitations
 
-Base URL: `http://localhost:3000/api/v1`  
-Auth header: `X-API-Key: <key>`
-
-### Pools
-| Method | Path | Description |
-|---|---|---|
-| GET | `/pools` | List all pools |
-| POST | `/pools` | Create pool |
-| DELETE | `/pools/:name` | Destroy pool |
-| GET | `/pools/:name/status` | Raw `zpool status` output |
-| GET | `/pools/:name/vdevs` | Parsed vdev/disk structure |
-| POST | `/pools/:name/scrub` | Start scrub |
-| DELETE | `/pools/:name/scrub` | Stop scrub |
-| GET | `/pools/:name/scrub-status` | Scrub progress |
-| POST | `/pools/:name/resilver` | ZFS Rewrite (scrub restart) |
-| POST | `/pools/:name/expand` | `zpool online -e` |
-| POST | `/pools/:name/replace` | `zpool replace` |
-| GET | `/pools/:name/events` | Parsed pool history events |
-| GET | `/pools/importable` | List importable pools |
-| POST | `/pools/:name/import` | Import pool |
-
-### Datasets
-| Method | Path | Description |
-|---|---|---|
-| GET | `/datasets` | List datasets |
-| POST | `/datasets` | Create dataset |
-| DELETE | `/datasets/*name` | Destroy (`?force=true&recursive=true`) |
-
-### Snapshots
-| Method | Path | Description |
-|---|---|---|
-| GET | `/snapshots` | List snapshots |
-| POST | `/snapshots` | Create (`{"name": "pool/ds@snap"}`) |
-| DELETE | `/snapshots/*name` | Destroy snapshot |
-| POST | `/snapshots/rollback` | Rollback |
-
-### Properties
-| Method | Path | Description |
-|---|---|---|
-| GET | `/properties/*name` | Get properties (`?prop=compression,quota,...`) |
-| PUT | `/properties/*name` | Set property (`{"prop": "...", "value": "..."}`) |
-
-### System
-| Method | Path | Description |
-|---|---|---|
-| GET | `/stats/system` | CPU%, ARC, memory, uptime |
-| GET | `/pools/:name/iostat` | Read/write bandwidth + IOPS |
-| GET | `/system/disks` | Block device list (lsblk) |
-| GET | `/system/smart/:device` | SMART data for device |
+- **Kernel Compatibility**: The container uses Alpine 3.20 (which ships ZFS 2.2.5). This provides the best compatibility for 2.2.x host kernels. If your host kernel module is 2.4.x, you should change `FROM alpine:3.20` to `FROM alpine:latest` in `rust-backend/Dockerfile`.
+- **Privileged Mode**: The backend container runs as `privileged: true` and mounts host paths (`/dev`, `/proc`, `/sys/module/zfs`) to allow the ZFS utilities inside the container to interact with your host's kernel and block devices.
 
 ---
 
-## Project Structure
+## 📜 License
 
-```
-zfs-manager/
-├── compose.yaml
-├── rust-backend/
-│   ├── Dockerfile
-│   ├── Cargo.toml
-│   └── src/
-│       ├── main.rs
-│       ├── error.rs
-│       ├── executor.rs
-│       └── routes/
-│           ├── pools.rs
-│           ├── datasets.rs
-│           ├── snapshots.rs
-│           ├── properties.rs
-│           ├── stats.rs
-│           ├── volumes.rs
-│           └── health.rs
-└── web/
-    ├── Dockerfile
-    └── src/
-        ├── App.tsx
-        ├── api.ts
-        ├── types.ts
-        └── components/
-            ├── Dashboard.tsx
-            ├── StoragePools.tsx
-            ├── DatasetList.tsx
-            ├── SnapshotManager.tsx
-            ├── Performance.tsx
-            ├── SystemLogs.tsx
-            └── Sidebar.tsx
-```
-
----
-
-## Known Limitations
-
-- **Scrub requires kernel/userland version match.** Alpine 3.20 ships ZFS 2.2.5. If your host kernel module is 2.4.x, change the runtime `FROM` in `rust-backend/Dockerfile` to `alpine:latest`.
-- **SMART data** requires a SMART-capable device — virtual disk images return no data.
-- The backend runs **privileged** and mounts `/dev`, `/proc`, and `/tmp` from the host to access ZFS devices and pool image files.
-
----
-
-## License
-
-MIT
+MIT License. See `LICENSE` for more information.
