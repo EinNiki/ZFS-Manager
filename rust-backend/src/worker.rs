@@ -321,13 +321,17 @@ async fn run_live_loop(state: crate::state::AppState) {
 /// Database efficiency rules:
 ///   - zfs_metrics: batch insert every ~6 s (every 3rd tick) to avoid excessive PG writes
 ///   - Redis zfs:metrics:latest updated every tick (2 s) for fast live display
-///   - global_stats: written at most every 60 s, skipped when unchanged
+///   - global_stats: written at most every 15 s, skipped when unchanged
 ///   - Retention: old rows pruned hourly; warns if table exceeds 500 k rows
 ///   - Write counter logged on every successful batch write
 async fn run_slow_loop(state: crate::state::AppState) {
     const KEY_PENDING: &str = "zfs:metrics:pending";
     const KEY_LATEST:  &str = "zfs:metrics:latest";
-    const TOTALS_INTERVAL: Duration = Duration::from_secs(60);
+    // Persist to DB every 15s (down from 60s) to reduce data loss on crash
+    const TOTALS_INTERVAL: Duration = Duration::from_secs(15);
+    // Loop runs every 2s; each iostat call measures 1s of bandwidth.
+    // Multiply by this factor to convert bytes/sec → bytes transferred in the full tick window.
+    const TICK_SECS: f64 = 2.0;
     const RETENTION_INTERVAL: Duration = Duration::from_secs(3600);
 
     // Tick every 2s for fast Redis/live updates; sync Postgres every 3rd tick (~6s)
@@ -385,8 +389,10 @@ async fn run_slow_loop(state: crate::state::AppState) {
                 let (alloc_gb, free_gb, iops, read_bw_mb, write_bw_mb, read_bw_bytes, write_bw_bytes) =
                     get_pool_iostat(pool).await.unwrap_or((0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0));
 
-                state.total_read_bytes.fetch_add(read_bw_bytes as u64, Ordering::Relaxed);
-                state.total_write_bytes.fetch_add(write_bw_bytes as u64, Ordering::Relaxed);
+                // read_bw_bytes is bytes/sec (instantaneous rate from zpool iostat).
+                // Multiply by TICK_SECS to convert to total bytes for this measurement window.
+                state.total_read_bytes.fetch_add((read_bw_bytes * TICK_SECS) as u64, Ordering::Relaxed);
+                state.total_write_bytes.fetch_add((write_bw_bytes * TICK_SECS) as u64, Ordering::Relaxed);
 
                 result.push(serde_json::json!({
                     "pool_name":    pool,

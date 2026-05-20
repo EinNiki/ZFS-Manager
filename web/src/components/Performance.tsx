@@ -465,18 +465,18 @@ export default function Performance({ stats, liveMetrics, serverTimeOffsetMs = 0
                 color={C.write}
               />
               <GaugeCard
-                label="Session Read"
+                label="Total Read"
                 value={totalRead.value}
                 unit={totalRead.unit}
                 color={C.read}
-                sub="since restart"
+                sub="all time"
               />
               <GaugeCard
-                label="Session Write"
+                label="Total Write"
                 value={totalWrite.value}
                 unit={totalWrite.unit}
                 color={C.write}
-                sub="since restart"
+                sub="all time"
               />
             </div>
           </div>
@@ -582,7 +582,7 @@ export default function Performance({ stats, liveMetrics, serverTimeOffsetMs = 0
                     { label: 'Avg Read',   value: fmtBw(liveMode ? dispLiveAvgR  : dispAvgR)  },
                     { label: 'Avg Write',  value: fmtBw(liveMode ? dispLiveAvgW  : dispAvgW)  },
                     // "Transfer" labels include the window so users don't confuse these with the
-                    // "Session Read/Write" cumulative counters shown in the Live I/O gauges above.
+                    // "Total Read/Write (all time)" cumulative counters shown in the Live I/O gauges above.
                     { label: liveMode ? 'Read Transfer' : `Read Transfer (${getIntervalLabel(interval)})`,  value: fmtGB(liveMode ? dispLiveTotalR : dispTotalR) },
                     { label: liveMode ? 'Write Transfer' : `Write Transfer (${getIntervalLabel(interval)})`, value: fmtGB(liveMode ? dispLiveTotalW : dispTotalW) },
                   ].map(s => (
