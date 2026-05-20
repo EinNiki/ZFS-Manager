@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Query, State},
+    extract::{Path, Query, State},
     routing::get,
     Json, Router,
 };
@@ -15,6 +15,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/metrics/history",         get(get_metrics_history))
         .route("/api/v1/metrics/live",             get(get_live_metrics))
         .route("/api/v1/metrics/fill-prediction",  get(get_fill_prediction))
+        .route("/api/v1/pools/:pool/disks",        get(get_pool_disk_metrics))
         .with_state(state)
 }
 
@@ -193,8 +194,7 @@ async fn get_live_metrics(
 
     if let Some(ref redis_conn) = state.redis {
         let mut conn = redis_conn.clone();
-
-        // Fast 500ms loop: cpu, arc, cumulative totals
+        // Single key written by the 100ms fast loop — contains everything.
         let snapshot: redis::RedisResult<Option<String>> = conn.get("zfs:live:snapshot").await;
         if let Ok(Some(hit)) = snapshot {
             if let Ok(val) = serde_json::from_str::<Value>(&hit) {
@@ -202,18 +202,10 @@ async fn get_live_metrics(
                 arc_hit_ratio  = val["arc_hit_ratio"].as_f64().unwrap_or(0.0);
                 total_read_mb  = val["total_read_mb"].as_f64().unwrap_or(0.0);
                 total_write_mb = val["total_write_mb"].as_f64().unwrap_or(0.0);
-            }
-        }
-
-        // Slow 5s loop: instantaneous IO throughput
-        let latest: redis::RedisResult<Option<String>> = conn.get("zfs:metrics:latest").await;
-        if let Ok(Some(hit)) = latest {
-            if let Ok(val) = serde_json::from_str::<Value>(&hit) {
-                read_bw_mb  = val["read_bw_mb"].as_f64().unwrap_or(0.0);
-                write_bw_mb = val["write_bw_mb"].as_f64().unwrap_or(0.0);
-                let iops    = val["iops"].as_f64().unwrap_or(0.0);
-                read_iops   = iops / 2.0;
-                write_iops  = iops / 2.0;
+                read_bw_mb     = val["read_bw_mb"].as_f64().unwrap_or(0.0);
+                write_bw_mb    = val["write_bw_mb"].as_f64().unwrap_or(0.0);
+                read_iops      = val["read_iops"].as_f64().unwrap_or(0.0);
+                write_iops     = val["write_iops"].as_f64().unwrap_or(0.0);
             }
         }
     }
@@ -228,6 +220,27 @@ async fn get_live_metrics(
         "read_iops":      read_iops,
         "write_iops":     write_iops,
     }))
+}
+
+/// GET /api/v1/pools/:pool/disks
+///
+/// Returns the most recent per-disk I/O metrics for every leaf vdev in the pool,
+/// read from the Redis key written by the 1s slow loop.
+async fn get_pool_disk_metrics(
+    State(state): State<AppState>,
+    Path(pool): Path<String>,
+) -> Json<Value> {
+    if let Some(ref redis_conn) = state.redis {
+        let mut conn = redis_conn.clone();
+        let key = format!("zfs:disks:{}:latest", pool);
+        let cached: redis::RedisResult<Option<String>> = conn.get(&key).await;
+        if let Ok(Some(hit)) = cached {
+            if let Ok(val) = serde_json::from_str::<Value>(&hit) {
+                return Json(json!({ "pool": pool, "disks": val }));
+            }
+        }
+    }
+    Json(json!({ "pool": pool, "disks": [] }))
 }
 
 // ── Fill prediction ───────────────────────────────────────────────────────────

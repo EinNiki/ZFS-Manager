@@ -257,6 +257,7 @@ function SectionHeader({ label, badge }: { label: string; badge: string }) {
 
 const WIDGET_LABELS: Record<string, string> = {
   'live-gauges':     'Live I/O Gauges',
+  'disk-io':         'Physical Disks',
   'io-chart':        'Historical I/O Chart',
   'storage-history': 'Storage Space History',
   'smart-health':    'SMART / Disk Health',
@@ -276,6 +277,10 @@ export default function Performance({ stats, liveMetrics, serverTimeOffsetMs = 0
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [hidden, setHidden]             = useState<Set<string>>(new Set());
   const [smartData, setSmartData]       = useState<any[]>([]);
+
+  // Per-disk metrics: poolName → disk rows; refreshed every 1 s
+  const [diskMetrics, setDiskMetrics]   = useState<Record<string, any[]>>({});
+  const [diskPools, setDiskPools]       = useState<string[]>([]);
 
   const liveStats = stats;
   const livePoint = liveStats.length > 0 ? liveStats[liveStats.length - 1] : null;
@@ -359,6 +364,24 @@ export default function Performance({ stats, liveMetrics, serverTimeOffsetMs = 0
     }).catch(() => {});
   }, []);
 
+  // Fetch pools then per-disk metrics every 1s
+  useEffect(() => {
+    const fetchDisks = async () => {
+      try {
+        const poolsRes = await api.getPools();
+        const names = (poolsRes.pools || []).map((p: any) => p.name).filter(Boolean);
+        setDiskPools(names);
+        const results = await Promise.all(names.map((n: string) => api.getPoolDiskMetrics(n)));
+        const map: Record<string, any[]> = {};
+        results.forEach((r, i) => { map[names[i]] = r.disks || []; });
+        setDiskMetrics(map);
+      } catch { /* ignore */ }
+    };
+    fetchDisks();
+    const id = setInterval(fetchDisks, 1_000);
+    return () => clearInterval(id);
+  }, []);
+
   const toggle = useCallback((key: string) => {
     setHidden(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
   }, []);
@@ -436,7 +459,7 @@ export default function Performance({ stats, liveMetrics, serverTimeOffsetMs = 0
         const totalWrite = fmtTotal(totalWriteGB);
         return (
           <div>
-            <SectionHeader label="Live I/O" badge="0.5 s" />
+            <SectionHeader label="Live I/O" badge="0.1 s" />
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12 }}>
               <GaugeCard
                 label="↑ Read Speed"
@@ -480,6 +503,48 @@ export default function Performance({ stats, liveMetrics, serverTimeOffsetMs = 0
               />
             </div>
           </div>
+        );
+      }
+
+      case 'disk-io': {
+        const allDisks = diskPools.flatMap(pool =>
+          (diskMetrics[pool] || []).map((d: any) => ({ ...d, pool }))
+        );
+        return (
+          <Panel title="Physical Disks" sub="Per-disk I/O · 1 s refresh">
+            {allDisks.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '32px 0' }}>
+                <HardDrive size={24} style={{ color: 'var(--text-muted)', margin: '0 auto 8px' }} />
+                <p style={{ fontSize: 13, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)' }}>
+                  No disk metrics available
+                </p>
+              </div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                      {['Pool', 'Disk', 'Read MB/s', 'Write MB/s', 'Read IOPS', 'Write IOPS'].map(h => (
+                        <th key={h} style={{ padding: '6px 12px', textAlign: 'left', fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allDisks.map((d: any, i: number) => (
+                      <tr key={`${d.pool}-${d.name}`} style={{ borderBottom: '1px solid var(--border-subtle)', background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)' }}>
+                        <td style={{ padding: '8px 12px', color: 'var(--text-muted)' }}>{d.pool}</td>
+                        <td style={{ padding: '8px 12px', color: 'var(--text-primary)', fontWeight: 600 }}>{d.name}</td>
+                        <td style={{ padding: '8px 12px', color: C.read }}>{fmtBw(d.read_bw_mb ?? 0)}</td>
+                        <td style={{ padding: '8px 12px', color: C.write }}>{fmtBw(d.write_bw_mb ?? 0)}</td>
+                        <td style={{ padding: '8px 12px', color: C.read }}>{(d.read_iops ?? 0).toFixed(0)}</td>
+                        <td style={{ padding: '8px 12px', color: C.write }}>{(d.write_iops ?? 0).toFixed(0)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Panel>
         );
       }
 

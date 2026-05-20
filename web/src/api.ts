@@ -213,4 +213,17 @@ export const api = {
       `/pools/${encodeURIComponent(name)}/settings`,
       { method: 'PUT', body: JSON.stringify({ scope, prop, value }) },
     ),
+
+  // ── Per-disk metrics ───────────────────────────────────────────────────────
+  getPoolDiskMetrics: (poolName: string) =>
+    request<{
+      pool: string;
+      disks: Array<{
+        name: string;
+        read_bw_mb: number;
+        write_bw_mb: number;
+        read_iops: number;
+        write_iops: number;
+      }>;
+    }>(`/pools/${encodeURIComponent(poolName)}/disks`),
 };
