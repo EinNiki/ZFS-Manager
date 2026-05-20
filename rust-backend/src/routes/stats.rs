@@ -88,10 +88,19 @@ fn read_cpu_jiffies() -> (u64, u64) {
                 .skip(1)
                 .map(|s| s.parse().unwrap_or(0))
                 .collect();
-            let idle  = vals.get(3).copied().unwrap_or(0)
-                      + vals.get(4).copied().unwrap_or(0);
-            let total: u64 = vals.iter().sum();
-            return (total, idle);
+            let user = vals.get(0).copied().unwrap_or(0);
+            let nice = vals.get(1).copied().unwrap_or(0);
+            let system = vals.get(2).copied().unwrap_or(0);
+            let idle = vals.get(3).copied().unwrap_or(0);
+            let iowait = vals.get(4).copied().unwrap_or(0);
+            let irq = vals.get(5).copied().unwrap_or(0);
+            let softirq = vals.get(6).copied().unwrap_or(0);
+            let steal = vals.get(7).copied().unwrap_or(0);
+            
+            // Do not sum all values because guest (8) and guest_nice (9) are already included in user and nice.
+            let total = user + nice + system + idle + iowait + irq + softirq + steal;
+            let idle_time = idle + iowait;
+            return (total, idle_time);
         }
     }
     (0, 0)
@@ -186,7 +195,8 @@ async fn get_system_stats(State(state): State<AppState>) -> Result<Json<Value>, 
             "total":     mem_total,
             "free":      mem_free,
             "available": mem_available,
-            "used":      mem_total - mem_available
+            // Subtract ARC size because it is kernel memory but effectively cache
+            "used":      (mem_total - mem_available).saturating_sub(arc_size as i64)
         }
     });
 
