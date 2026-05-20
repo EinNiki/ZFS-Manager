@@ -436,7 +436,7 @@ export default function Performance({ stats, liveMetrics, serverTimeOffsetMs = 0
         const totalWrite = fmtTotal(totalWriteGB);
         return (
           <div>
-            <SectionHeader label="Live I/O" badge="1 s" />
+            <SectionHeader label="Live I/O" badge="0.5 s" />
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12 }}>
               <GaugeCard
                 label="↑ Read Speed"
@@ -581,10 +581,8 @@ export default function Performance({ stats, liveMetrics, serverTimeOffsetMs = 0
                   {[
                     { label: 'Avg Read',   value: fmtBw(liveMode ? dispLiveAvgR  : dispAvgR)  },
                     { label: 'Avg Write',  value: fmtBw(liveMode ? dispLiveAvgW  : dispAvgW)  },
-                    // "Transfer" labels include the window so users don't confuse these with the
-                    // "Total Read/Write (all time)" cumulative counters shown in the Live I/O gauges above.
-                    { label: liveMode ? 'Read Transfer' : `Read Transfer (${getIntervalLabel(interval)})`,  value: fmtGB(liveMode ? dispLiveTotalR : dispTotalR) },
-                    { label: liveMode ? 'Write Transfer' : `Write Transfer (${getIntervalLabel(interval)})`, value: fmtGB(liveMode ? dispLiveTotalW : dispTotalW) },
+                    { label: 'Total Read',  value: fmtGB(liveMode ? dispLiveTotalR : dispTotalR) },
+                    { label: 'Total Write', value: fmtGB(liveMode ? dispLiveTotalW : dispTotalW) },
                   ].map(s => (
                     <div key={s.label}>
                       <div style={{ fontSize: 9, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>{s.label}</div>
