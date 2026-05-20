@@ -6,9 +6,10 @@ use axum::{
     Router,
 };
 use tower_http::{
-    cors::{Any, CorsLayer},
+    cors::{AllowOrigin, CorsLayer},
     trace::TraceLayer,
 };
+use axum::http::HeaderValue as AxumHeaderValue;
 use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use std::sync::Arc;
@@ -310,7 +311,12 @@ async fn main() {
             init_schema(&client).await;
             let admin_password = {
                 let v = std::env::var("ADMIN_PASSWORD").unwrap_or_default();
-                if v.is_empty() { "admin123".to_string() } else { v }
+                if v.is_empty() {
+                    warn!("ADMIN_PASSWORD not set — using insecure default 'admin123'. Change this immediately via the UI or set ADMIN_PASSWORD.");
+                    "admin123".to_string()
+                } else {
+                    v
+                }
             };
             seed_admin_user(&client, &admin_password).await;
             Some(Arc::new(client))
@@ -349,6 +355,33 @@ async fn main() {
             init_write = row.get::<_, i64>(1) as u64;
         }
         info!("Loaded totals from PostgreSQL: read={init_read} write={init_write}");
+
+        // Bootstrap from existing zfs_metrics when global_stats hasn't been populated yet.
+        // Each DB row holds a bytes/sec rate (read_bw_mb MB/s) for a 2-second measurement
+        // window, so total bytes = SUM(read_bw_mb * 2.0 * 1_048_576).
+        // This keeps the all-time counter consistent with what the chart calculates,
+        // and prevents "all-time total < 24h chart value" on fresh installations.
+        if init_read == 0 && init_write == 0 {
+            if let Ok(row) = pg.query_one(
+                "SELECT COALESCE(SUM(read_bw_mb),0)::float8, COALESCE(SUM(write_bw_mb),0)::float8 FROM zfs_metrics",
+                &[],
+            ).await {
+                let sum_r: f64 = row.get(0);
+                let sum_w: f64 = row.get(1);
+                if sum_r > 0.0 || sum_w > 0.0 {
+                    // Multiply by 2.0 (tick seconds) to convert MB/s sum → MB total, then to bytes
+                    init_read  = (sum_r * 2.0 * 1_048_576.0) as u64;
+                    init_write = (sum_w * 2.0 * 1_048_576.0) as u64;
+                    info!("Bootstrapped totals from zfs_metrics history: read={init_read} write={init_write}");
+                    let tr_i = init_read  as i64;
+                    let tw_i = init_write as i64;
+                    let _ = pg.execute(
+                        "UPDATE global_stats SET total_read_bytes=$1, total_write_bytes=$2 WHERE id=1",
+                        &[&tr_i, &tw_i],
+                    ).await;
+                }
+            }
+        }
     }
 
     let app_state = AppState {
@@ -361,10 +394,22 @@ async fn main() {
 
     tokio::spawn(worker::run_metrics_worker(app_state.clone()));
 
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
+    let cors = {
+        let origin = std::env::var("CORS_ORIGIN").unwrap_or_default();
+        let layer = CorsLayer::new()
+            .allow_methods(tower_http::cors::Any)
+            .allow_headers(tower_http::cors::Any);
+        if origin.is_empty() {
+            warn!("CORS_ORIGIN not set — allowing all origins. Set CORS_ORIGIN to restrict access.");
+            layer.allow_origin(tower_http::cors::Any)
+        } else {
+            let allowed: Vec<AxumHeaderValue> = origin
+                .split(',')
+                .filter_map(|s| s.trim().parse().ok())
+                .collect();
+            layer.allow_origin(AllowOrigin::list(allowed))
+        }
+    };
 
     let app = Router::new()
         .merge(routes::health::router())
