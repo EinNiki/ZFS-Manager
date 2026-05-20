@@ -157,6 +157,14 @@ function fmtGrowthRate(diffGb: number, timeSec: number): string {
   return `${sign}${abs.toFixed(0)} B/s`;
 }
 
+// Format a write rate in GB/day to a human-readable string
+function fmtRateGbDay(gbPerDay: number): string {
+  if (gbPerDay >= 1000) return `${(gbPerDay / 1024).toFixed(1)} TB/day`;
+  if (gbPerDay >= 1)    return `${gbPerDay.toFixed(2)} GB/day`;
+  if (gbPerDay >= 0.001) return `${(gbPerDay * 1024).toFixed(1)} MB/day`;
+  return '< 1 MB/day';
+}
+
 function getIntervalLabel(iv: Interval): string {
   switch (iv) {
     case '1h': return 'last 1h';
@@ -320,19 +328,20 @@ export default function Performance({ stats, liveMetrics, serverTimeOffsetMs = 0
     return () => clearInterval(id);
   }, [interval, liveMode]);
 
-  // Fetch capacity history for Pool Capacity widget — always 24h, poll every 15s
+  // Fetch capacity history for Pool Capacity widget — follows the selected interval, poll every 15s
   useEffect(() => {
     setCapacityData([]);
     setLoadingCapacity(true);
+    const apiInterval = INTERVALS.find(i => i.key === interval)?.api ?? interval;
     const fetchCap = () =>
-      api.getMetricsHistory('1d')
-        .then(res => setCapacityData(transformHistory(res.metrics, '1d')))
+      api.getMetricsHistory(apiInterval)
+        .then(res => setCapacityData(transformHistory(res.metrics, interval)))
         .catch(() => setCapacityData([]))
         .finally(() => setLoadingCapacity(false));
     fetchCap();
     const id = setInterval(fetchCap, 15_000);
     return () => clearInterval(id);
-  }, []);
+  }, [interval]);
 
   useEffect(() => {
     api.getDisks().then(async res => {
@@ -427,7 +436,7 @@ export default function Performance({ stats, liveMetrics, serverTimeOffsetMs = 0
         const totalWrite = fmtTotal(totalWriteGB);
         return (
           <div>
-            <SectionHeader label="Live I/O" badge="1 s" />
+            <SectionHeader label="Live I/O" badge="0.5 s" />
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12 }}>
               <GaugeCard
                 label="↑ Read Speed"
@@ -456,14 +465,14 @@ export default function Performance({ stats, liveMetrics, serverTimeOffsetMs = 0
                 color={C.write}
               />
               <GaugeCard
-                label="Total ↑ Read"
+                label="Total Read"
                 value={totalRead.value}
                 unit={totalRead.unit}
                 color={C.read}
                 sub="all time"
               />
               <GaugeCard
-                label="Total ↓ Write"
+                label="Total Write"
                 value={totalWrite.value}
                 unit={totalWrite.unit}
                 color={C.write}
@@ -591,7 +600,7 @@ export default function Performance({ stats, liveMetrics, serverTimeOffsetMs = 0
         const capGbScale = getGbScale(capStorageMaxGB);
         const capHistXAxisProps = { dataKey: 'timestamp' as const, axisLine: false, tickLine: false, tick: AXIS_TICK, minTickGap: 40 };
 
-        // Compute forecast from 24h capacity data:
+        // Compute forecast from capacity data for the selected interval:
         // avgWriteMbPerSec → GB/day → daysUntilFull = freeGb / gbPerDay
         const lastFreeGb = capacityData.length > 0 ? (capacityData[capacityData.length - 1].free || 0) : 0;
         const avgWriteMbPerSec = capacityData.length > 0
@@ -617,7 +626,7 @@ export default function Performance({ stats, liveMetrics, serverTimeOffsetMs = 0
         return (
           <Panel
             title="Pool Capacity"
-            sub="Allocation trends · Last 24h"
+            sub={`Allocation trends · ${getIntervalLabel(interval)}`}
             right={
               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                 <Toggle color={C.alloc} label="Used" active={vis('alloc')} onClick={() => toggle('alloc')} />
@@ -641,12 +650,17 @@ export default function Performance({ stats, liveMetrics, serverTimeOffsetMs = 0
             </div>
 
             {/* Forecast line pinned to bottom of card */}
-            <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
               <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Forecast:</span>
               {forecastDateStr && forecastTimeStr ? (
-                <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: forecastColor, fontWeight: 600 }}>
-                  Full on {forecastDateStr} ({forecastTimeStr})
-                </span>
+                <>
+                  <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: forecastColor, fontWeight: 600 }}>
+                    Full on {forecastDateStr} ({forecastTimeStr})
+                  </span>
+                  <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
+                    · Write rate: {fmtRateGbDay(avgWriteGbPerDay)}
+                  </span>
+                </>
               ) : (
                 <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>No growth detected</span>
               )}

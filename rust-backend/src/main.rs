@@ -355,6 +355,33 @@ async fn main() {
             init_write = row.get::<_, i64>(1) as u64;
         }
         info!("Loaded totals from PostgreSQL: read={init_read} write={init_write}");
+
+        // Bootstrap from existing zfs_metrics when global_stats hasn't been populated yet.
+        // Each DB row holds a bytes/sec rate (read_bw_mb MB/s) for a 2-second measurement
+        // window, so total bytes = SUM(read_bw_mb * 2.0 * 1_048_576).
+        // This keeps the all-time counter consistent with what the chart calculates,
+        // and prevents "all-time total < 24h chart value" on fresh installations.
+        if init_read == 0 && init_write == 0 {
+            if let Ok(row) = pg.query_one(
+                "SELECT COALESCE(SUM(read_bw_mb),0)::float8, COALESCE(SUM(write_bw_mb),0)::float8 FROM zfs_metrics",
+                &[],
+            ).await {
+                let sum_r: f64 = row.get(0);
+                let sum_w: f64 = row.get(1);
+                if sum_r > 0.0 || sum_w > 0.0 {
+                    // Multiply by 2.0 (tick seconds) to convert MB/s sum → MB total, then to bytes
+                    init_read  = (sum_r * 2.0 * 1_048_576.0) as u64;
+                    init_write = (sum_w * 2.0 * 1_048_576.0) as u64;
+                    info!("Bootstrapped totals from zfs_metrics history: read={init_read} write={init_write}");
+                    let tr_i = init_read  as i64;
+                    let tw_i = init_write as i64;
+                    let _ = pg.execute(
+                        "UPDATE global_stats SET total_read_bytes=$1, total_write_bytes=$2 WHERE id=1",
+                        &[&tr_i, &tw_i],
+                    ).await;
+                }
+            }
+        }
     }
 
     let app_state = AppState {
