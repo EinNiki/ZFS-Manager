@@ -315,11 +315,12 @@ async fn run_live_loop(state: crate::state::AppState) {
     }
 }
 
-/// Slow 5s loop: collects iostat per pool, pushes to Redis list + syncs to Postgres,
+/// Slow 2s loop: collects iostat per pool, pushes to Redis list + syncs to Postgres,
 /// and accumulates bytes into AppState atomics so the fast loop can report totals.
 ///
 /// Database efficiency rules:
-///   - zfs_metrics: batch insert, at most every 5 s (one INSERT per tick instead of N)
+///   - zfs_metrics: batch insert every ~6 s (every 3rd tick) to avoid excessive PG writes
+///   - Redis zfs:metrics:latest updated every tick (2 s) for fast live display
 ///   - global_stats: written at most every 60 s, skipped when unchanged
 ///   - Retention: old rows pruned hourly; warns if table exceeds 500 k rows
 ///   - Write counter logged on every successful batch write
@@ -329,7 +330,9 @@ async fn run_slow_loop(state: crate::state::AppState) {
     const TOTALS_INTERVAL: Duration = Duration::from_secs(60);
     const RETENTION_INTERVAL: Duration = Duration::from_secs(3600);
 
-    let mut ticker = interval(Duration::from_secs(5));
+    // Tick every 2s for fast Redis/live updates; sync Postgres every 3rd tick (~6s)
+    let mut ticker = interval(Duration::from_secs(2));
+    let mut pg_tick: u8 = 0;
 
     let mut t1 = read_cpu_jiffies();
     tokio::time::sleep(Duration::from_millis(500)).await;
@@ -347,6 +350,10 @@ async fn run_slow_loop(state: crate::state::AppState) {
 
     loop {
         ticker.tick().await;
+        pg_tick = pg_tick.wrapping_add(1);
+        // Sync to PostgreSQL every 3rd tick (2s × 3 = ~6s, close to the original 5s rate)
+        let do_pg_sync = pg_tick >= 3;
+        if do_pg_sync { pg_tick = 0; }
 
         let t2 = read_cpu_jiffies();
         let cpu_percent = if t2.0 > t1.0 {
@@ -397,6 +404,7 @@ async fn run_slow_loop(state: crate::state::AppState) {
 
         if let Some(ref mut redis_conn) = state.redis.clone() {
             let mut conn = redis_conn.clone();
+            // Always push to Redis so zfs:metrics:latest is updated every 2s for live display
             for entry in &entries {
                 let payload = match serde_json::to_string(entry) {
                     Ok(s)  => s,
@@ -405,69 +413,74 @@ async fn run_slow_loop(state: crate::state::AppState) {
                 push_to_redis(&mut conn, KEY_PENDING, KEY_LATEST, &payload).await;
             }
 
+            // Sync buffered rows to PostgreSQL every 3rd tick to keep write rate near original 5s
+            if do_pg_sync {
+                if let Some(ref pg_client) = state.pg {
+                    sync_redis_to_postgres(&mut conn, pg_client, KEY_PENDING, &mut write_counter).await;
+                }
+            }
+        } else if do_pg_sync {
+            // No Redis — direct batch insert every 3rd tick (~6s)
             if let Some(ref pg_client) = state.pg {
-                sync_redis_to_postgres(&mut conn, pg_client, KEY_PENDING, &mut write_counter).await;
-            }
-        } else if let Some(ref pg_client) = state.pg {
-            // No Redis — direct batch insert
-            struct DirectRow {
-                pool_name: String,
-                read_bw_mb: f64,
-                write_bw_mb: f64,
-                iops: f64,
-                alloc_gb: f64,
-                free_gb: f64,
-                cpu_v: f64,
-                arc_v: f64,
-            }
-
-            let rows: Vec<DirectRow> = entries.iter().map(|e| DirectRow {
-                pool_name:   e["pool_name"].as_str().unwrap_or("").to_string(),
-                read_bw_mb:  e["read_bw_mb"].as_f64().unwrap_or(0.0),
-                write_bw_mb: e["write_bw_mb"].as_f64().unwrap_or(0.0),
-                iops:        e["iops"].as_f64().unwrap_or(0.0),
-                alloc_gb:    e["alloc_gb"].as_f64().unwrap_or(0.0),
-                free_gb:     e["free_gb"].as_f64().unwrap_or(0.0),
-                cpu_v:       e["cpu_percent"].as_f64().unwrap_or(0.0),
-                arc_v:       e["arc_hit_ratio"].as_f64().unwrap_or(0.0),
-            }).collect();
-
-            if !rows.is_empty() {
-                let mut idx = 1usize;
-                let mut placeholders: Vec<String> = Vec::with_capacity(rows.len());
-                for _ in &rows {
-                    placeholders.push(format!(
-                        "(${}, ${}, ${}, ${}, ${}, ${}, ${}, ${})",
-                        idx, idx+1, idx+2, idx+3, idx+4, idx+5, idx+6, idx+7
-                    ));
-                    idx += 8;
+                struct DirectRow {
+                    pool_name: String,
+                    read_bw_mb: f64,
+                    write_bw_mb: f64,
+                    iops: f64,
+                    alloc_gb: f64,
+                    free_gb: f64,
+                    cpu_v: f64,
+                    arc_v: f64,
                 }
-                let sql = format!(
-                    "INSERT INTO zfs_metrics \
-                     (pool_name, read_bw_mb, write_bw_mb, iops, alloc_gb, free_gb, cpu_percent, arc_hit_ratio) \
-                     VALUES {}",
-                    placeholders.join(", ")
-                );
-                let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync + Send>> =
-                    Vec::with_capacity(rows.len() * 8);
-                for r in &rows {
-                    params.push(Box::new(r.pool_name.clone()));
-                    params.push(Box::new(r.read_bw_mb));
-                    params.push(Box::new(r.write_bw_mb));
-                    params.push(Box::new(r.iops));
-                    params.push(Box::new(r.alloc_gb));
-                    params.push(Box::new(r.free_gb));
-                    params.push(Box::new(r.cpu_v));
-                    params.push(Box::new(r.arc_v));
-                }
-                let param_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
-                    params.iter().map(|b| b.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
-                match pg_client.execute(sql.as_str(), param_refs.as_slice()).await {
-                    Ok(n) => {
-                        write_counter += n as u64;
-                        info!("Direct batch-inserted {n} metric rows (total writes: {write_counter})");
+
+                let rows: Vec<DirectRow> = entries.iter().map(|e| DirectRow {
+                    pool_name:   e["pool_name"].as_str().unwrap_or("").to_string(),
+                    read_bw_mb:  e["read_bw_mb"].as_f64().unwrap_or(0.0),
+                    write_bw_mb: e["write_bw_mb"].as_f64().unwrap_or(0.0),
+                    iops:        e["iops"].as_f64().unwrap_or(0.0),
+                    alloc_gb:    e["alloc_gb"].as_f64().unwrap_or(0.0),
+                    free_gb:     e["free_gb"].as_f64().unwrap_or(0.0),
+                    cpu_v:       e["cpu_percent"].as_f64().unwrap_or(0.0),
+                    arc_v:       e["arc_hit_ratio"].as_f64().unwrap_or(0.0),
+                }).collect();
+
+                if !rows.is_empty() {
+                    let mut idx = 1usize;
+                    let mut placeholders: Vec<String> = Vec::with_capacity(rows.len());
+                    for _ in &rows {
+                        placeholders.push(format!(
+                            "(${}, ${}, ${}, ${}, ${}, ${}, ${}, ${})",
+                            idx, idx+1, idx+2, idx+3, idx+4, idx+5, idx+6, idx+7
+                        ));
+                        idx += 8;
                     }
-                    Err(e) => warn!("Direct batch INSERT failed: {e}"),
+                    let sql = format!(
+                        "INSERT INTO zfs_metrics \
+                         (pool_name, read_bw_mb, write_bw_mb, iops, alloc_gb, free_gb, cpu_percent, arc_hit_ratio) \
+                         VALUES {}",
+                        placeholders.join(", ")
+                    );
+                    let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync + Send>> =
+                        Vec::with_capacity(rows.len() * 8);
+                    for r in &rows {
+                        params.push(Box::new(r.pool_name.clone()));
+                        params.push(Box::new(r.read_bw_mb));
+                        params.push(Box::new(r.write_bw_mb));
+                        params.push(Box::new(r.iops));
+                        params.push(Box::new(r.alloc_gb));
+                        params.push(Box::new(r.free_gb));
+                        params.push(Box::new(r.cpu_v));
+                        params.push(Box::new(r.arc_v));
+                    }
+                    let param_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
+                        params.iter().map(|b| b.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
+                    match pg_client.execute(sql.as_str(), param_refs.as_slice()).await {
+                        Ok(n) => {
+                            write_counter += n as u64;
+                            info!("Direct batch-inserted {n} metric rows (total writes: {write_counter})");
+                        }
+                        Err(e) => warn!("Direct batch INSERT failed: {e}"),
+                    }
                 }
             }
         }
